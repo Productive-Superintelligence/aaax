@@ -27,7 +27,27 @@ AAAX is implemented as a **SSSN System** — a root System that manages a conste
 └─────────────────────────────────────────────────┘
 ```
 
-The end-user experience is simple: a CLI/GUI that bootstraps an AAAX instance, loads a default LibOS, and launches the agent constellation. From the user's perspective, it looks like `aaax launch config.toml` — the layering is invisible.
+The end-user experience is simple: a CLI/GUI that bootstraps an AAAX instance, loads a suite, and launches the agent constellation. From the user's perspective, it looks like `aaax launch config.toml` — the layering is invisible.
+
+### Cardinal Application
+
+The **AAAX Productive Suite (AAAX-PS)** is the first and flagship application built on the AAAX kernel. It covers societal analysis, scientific research, and operational coordination — functioning as the mind, body and phylogenetics of an autonomous productive system. The Productive Suite is developed simultaneously with the kernel but kept structurally independent: the kernel has zero imports from the suite, and the suite imports from the kernel. The suite's role is to stress-test all kernel mechanisms (reconfigurability, heterogeneous communication, governance) while the kernel remains application-agnostic. See the AAAX-PS Design Note for full specification.
+
+### The Six Kernel Functions
+
+AAAX provides exactly six functions. Each passes the test: **"if any docked system could do this itself, would things break?"**
+
+```
+AAAX Kernel provides:
+├── 1. Constellation management    (dock, undock, registry)
+├── 2. Capability management       (issue, validate, expire)
+├── 3. Action gate                 (authorize side effects against policy)
+├── 4. Module loading              (manifest verification, system creation, channel wiring)
+├── 5. Revocation & lifecycle      (force-revoke, pause, resume, drain)
+└── 6. Bootstrap                   (config-driven initialization, PID 1)
+```
+
+Everything else — monitoring, logging, scheduling, package management, visualization — can be built as docked Systems using the same primitives. If it can be done in user space, it must be done in user space.
 
 ### Design Principles
 
@@ -35,6 +55,8 @@ The end-user experience is simple: a CLI/GUI that bootstraps an AAAX instance, l
 - **Framework-agnostic.** AAAX does not assume LLLM. Any agent library that implements AAAX's protocols can dock with an AAAX instance.
 - **SSSN-native.** AAAX is a System. Its abstractions (capabilities, action gates) are implemented as channel protocols, not a separate enforcement layer.
 - **Opt-in governance.** SSSN is an open, decentralized network — an internet of AI. AAAX does not control who exists on the network. It controls what happens inside its own boundary. Docking with AAAX is a choice that gives systems managed guarantees.
+- **Policy-neutral.** The kernel provides the action gate mechanism but does not prescribe what is allowed or denied. Whether a system can execute trades, send emails, move robot arms, or only produce reports is a policy decision configured per deployment — not a kernel constraint. The kernel enforces the policy; the application defines it.
+- **Application-agnostic kernel, application-driven development.** The kernel is developed alongside its cardinal application (Productive Suite) to ensure protocols are practical. But every kernel mechanism must pass the "would a different application need this too?" test. If yes, it belongs in the kernel. If no, it belongs in the suite.
 
 ---
 
@@ -77,9 +99,9 @@ LLLM (Low-Level Language Model) provides four abstractions: **Tactics** (program
 
 **LLLM is the first LibOS, not the only one.** AAAX's protocols must be implementable by any compatible agent library.
 
-### 2.3 Default LibOS
+### 2.3 Default LibOS and the Productive Suite
 
-AAAX should ship with a **default LibOS** in the same repository. This serves three purposes:
+AAAX ships with a **default LibOS** in the same repository. This serves three purposes:
 
 1. **Zero-config experience.** Users can `aaax launch` without separately installing a LibOS. The default provides sensible agent primitives out of the box.
 2. **Reference implementation.** The default LibOS demonstrates how to implement AAAX's protocols (capability requests, action gate integration, module manifest format) — serving as documentation-by-example for anyone building a custom LibOS.
@@ -87,7 +109,15 @@ AAAX should ship with a **default LibOS** in the same repository. This serves th
 
 The default LibOS should be LLLM-based, providing a pre-wired Tactic that handles capability negotiation and action gate routing. It should be thin — a bridge between LLLM's abstractions and AAAX's protocols, not a framework of its own.
 
-Users who outgrow the default can swap in a custom LibOS while keeping the same AAAX instance and SSSN topology.
+The **AAAX Productive Suite (AAAX-PS)** is the flagship application built on this default LibOS. It covers three branches: societal analysis (the mind), scientific research (the phylogenetics), and operations (the body — planning for IoT/robotics/CPS). The suite ships with **vanilla modules** (standard LLM-based reasoning, basic memory, simple tool integrations) that work immediately. **Advanced modules** based on peer-reviewed research (SocioDojo, Analytica, Genesys, AAPM, etc.) can be installed as drop-in replacements via the LLLM package system, dramatically improving quality for specific domains. The composition model is the same — vanilla and advanced modules implement the same interfaces and are interchangeable.
+
+The suite and the kernel are developed simultaneously but maintained as structurally independent:
+- The kernel has **zero imports** from the suite.
+- The suite imports from the kernel.
+- Every kernel mechanism must pass the "would a robotics/metaverse/creative application need this too?" test.
+- Enforced by CI and a dedicated test (`test_non_ps.py`) that boots a kernel with zero PS involvement.
+
+See the AAAX-PS Design Note for full specification.
 
 ### 2.4 OpenClaw — Dockable Application, Not a LibOS
 
@@ -103,6 +133,32 @@ OpenClaw is a popular open-source personal AI agent (160k+ GitHub stars) with a 
 - Bridge OpenClaw's memory with SSSN channels, allowing other systems in the constellation to read/write shared context.
 
 This adapter is not a priority for the initial implementation. It belongs in Phase 4 or as a community contribution.
+
+### 2.5 Package Management Layering
+
+Following Apple's macOS/iOS design pattern:
+
+| Layer | macOS | AAAX Stack |
+|---|---|---|
+| **Package system** | `pkg/installer`, `brew` | LLLM (`lllm.toml`, `lllm pkg install`, dependency resolution) |
+| **Trust boundary** | Gatekeeper (code signing, notarization) | AAAX module loader (manifest verification against policy at dock time) |
+| **Marketplace** | App Store (user-space app) | Future marketplace app (a SSSN System or web service, not kernel) |
+
+LLLM handles package format, installation, and dependency resolution. AAAX handles the trust boundary: when a module is loaded (from any source), AAAX verifies its manifest against policy before docking it. A future marketplace is a user-space application, not kernel code.
+
+```bash
+# LLLM handles packages (like brew/apt)
+lllm pkg install psi.advanced:analytica       # Install files to disk
+lllm pkg list                                  # List installed packages
+
+# AAAX handles trust and runtime (like Gatekeeper + launchctl)
+aaax modules list                              # What's currently docked
+aaax modules load psi.advanced:analytica       # Verify → dock → issue capabilities
+aaax modules unload analytica                  # Revoke → undock
+
+# Convenience: both in one step
+aaax install psi.advanced:analytica            # lllm pkg install + aaax modules load
+```
 
 ---
 
@@ -197,6 +253,7 @@ AAAX (root System)
 ├── [wired to subsystems] capability_request  — subsystems request access here
 ├── [wired to subsystems] action_gate         — subsystems submit actions here
 ├── [wired to subsystems] module_loader       — subsystems register modules here
+├── [wired to subsystems] lifecycle           — revocation, pause, resume commands
 ├── [wired to subsystems] heartbeat           — liveness and topology awareness
 │
 └── Docked subsystems (each wired only to granted channels)
@@ -266,6 +323,8 @@ reason: <string>                   # if denied
 
 **Channel:** `action_gate` (WorkQueueChannel — sequential processing, exactly-once semantics)
 
+The action gate is **policy-neutral**: it provides the mechanism (risk-level classification, escalation routing, capability verification) but the policy is defined per deployment. A financial analysis deployment might block trade execution. A robotics deployment might allow actuator commands but require human approval for irreversible actions. A research deployment might allow arbitrary code execution within a sandbox. The kernel doesn't care — it enforces whatever policy the application configures.
+
 **Request → AAAX:**
 
 ```yaml
@@ -290,16 +349,16 @@ escalated_to: <system-id>  # if supervisor review needed
 
 **Risk levels:**
 
-| Risk Level | Default Behavior |
+| Risk Level | Behavior (configurable per deployment) |
 |---|---|
 | `low` | Auto-approve if capability is valid |
 | `medium` | Policy check — may auto-approve or deny |
 | `high` | Require explicit policy match or escalation |
-| `irreversible` | Always escalate to supervisor or human-in-the-loop |
+| `irreversible` | Default: escalate to supervisor or human-in-the-loop |
 
 ### 6.3 Module Loading
 
-**Purpose:** A LibOS implementation registers itself with AAAX, declaring its capabilities and required resources.
+**Purpose:** A LibOS implementation registers itself with AAAX, declaring its capabilities and required resources. This is AAAX's **Gatekeeper** — the trust boundary for loading modules, regardless of where the module came from.
 
 **Channel:** `module_loader` (WorkQueueChannel)
 
@@ -331,8 +390,31 @@ reason: <string>  # if rejected
 
 - The manifest format is framework-agnostic. LLLM packages use `lllm.toml`; the default LibOS translates this to AAAX's manifest format. Other frameworks provide their own translators.
 - Module loading includes creating the SSSN System, wiring it to granted channels via `add_subsystem()`, and starting its lifecycle.
+- When a module is accepted, AAAX pre-issues capabilities for what the manifest declared. Additional capabilities can be requested at runtime through the capability protocol.
 
-### 6.4 Bootstrap
+### 6.4 Revocation and Lifecycle
+
+**Purpose:** Complete the governance loop. Without revocation, a misbehaving system keeps its capabilities until they expire naturally. Without lifecycle transitions, you can only fully start or fully stop a subsystem. This is Aegis's visible revocation + abort protocol mapped to agent systems.
+
+**Channel:** `lifecycle` (WorkQueueChannel)
+
+**Commands:**
+
+- **`revoke`** — Force-revoke all capabilities for a system (Aegis abort protocol). The system loses all access immediately.
+- **`pause`** — Suspend a docked subsystem. It remains docked but stops processing.
+- **`resume`** — Resume a paused subsystem.
+- **`drain`** — Gracefully wind down a subsystem (finish current work, then stop). Used before undocking.
+
+**Kernel methods:**
+
+```python
+await kernel.revoke(system_id)              # Force-revoke all capabilities
+await kernel.pause(system_id)               # Suspend processing
+await kernel.resume(system_id)              # Resume processing
+await kernel.drain(system_id, timeout=30)   # Graceful shutdown → undock
+```
+
+### 6.5 Bootstrap
 
 Bootstrap is the initialization sequence that runs before any protocol channels exist.
 
@@ -342,7 +424,7 @@ Bootstrap is the initialization sequence that runs before any protocol channels 
 1. Instantiate AAAX as a BaseSystem
 2. setup():
    a. Create internal private channels (capability_registry, module_registry, policy_store)
-   b. Create protocol channels (capability_request, action_gate, module_loader, heartbeat)
+   b. Create protocol channels (capability_request, action_gate, module_loader, lifecycle, heartbeat)
    c. Load bootstrap policy (from config file or default)
    d. Load default LibOS
    e. Load initial modules from config:
@@ -353,8 +435,9 @@ Bootstrap is the initialization sequence that runs before any protocol channels 
    a. Process capability_request queue
    b. Process action_gate queue
    c. Process module_loader queue
-   d. Heartbeat / liveness checks
-   e. Capability expiry and revocation
+   d. Process lifecycle queue
+   e. Heartbeat / liveness checks
+   f. Capability expiry and revocation
 ```
 
 **Bootstrap config:**
@@ -433,6 +516,7 @@ There are three integration patterns:
 **Integration pattern:** Dockable application. OpenClaw is too opinionated to serve as a LibOS (fixed gateway model, Markdown memory, Node.js runtime), but it represents the exact kind of end-user agent that should benefit from AAAX's governance.
 
 **What AAAX provides to OpenClaw:**
+
 - Tool execution routed through AAAX's action gate — so OpenClaw's shell commands, browser automation, and email sending are subject to authorization policy. This directly addresses OpenClaw's well-documented security concerns (CVE-2026-25253, prompt injection risks, unvetted community skills).
 - Capability-scoped access to other systems in the constellation — an OpenClaw instance could request data from a research agent or delegate tasks to a coding agent, with AAAX managing the trust boundary.
 - Federation — multiple OpenClaw instances (e.g., for different team members) can coordinate through AAAX-managed channels rather than ad-hoc peer-to-peer connections.
@@ -448,6 +532,7 @@ There are three integration patterns:
 **Why it fits AAAX well:** AI Scientist is a multi-stage pipeline with high-risk side effects: it executes arbitrary code, runs GPU experiments, writes files, and can consume unbounded compute. These are exactly the operations AAAX's action gate is designed to govern. Its 42% experiment failure rate (per independent evaluation) further motivates sandboxing and governance.
 
 **What AAAX provides to AI Scientist:**
+
 - Action gating on experiment execution — AAAX can enforce compute budgets, sandbox code execution, and require approval for resource-intensive experiments.
 - Module loading for the multi-agent pipeline — the idea generator, experiment runner, paper writer, and reviewer can each be separate docked systems with scoped capabilities, rather than a monolithic script.
 - Capability-scoped access to external resources — literature search APIs, GPU clusters, LaTeX compilation — each requiring explicit capability grants.
@@ -462,12 +547,14 @@ There are three integration patterns:
 **Integration pattern:** LibOS-level (the evolutionary loop as a Tactic) or dockable application (wrapping OpenEvolve).
 
 **Why it fits AAAX well:** AlphaEvolve's architecture is naturally decomposable into AAAX's model:
+
 - The **prompt sampler** and **LLM ensemble** are agent-level concerns (LibOS).
 - The **evaluation sandbox** needs isolated, metered compute — a kernel concern (AAAX action gate + inference gate).
 - The **program database** (versioned candidates) maps to a SSSN channel (append-only message store with eviction policy).
 - The **evolutionary controller** is orchestration logic (LLLM Tactic or SSSN System step loop).
 
 **What AAAX provides to AlphaEvolve/OpenEvolve:**
+
 - Sandboxed evaluation — each candidate program runs through the action gate, preventing malicious or runaway code from escaping the evaluation environment.
 - Compute budget enforcement — evolutionary search can consume unbounded resources; AAAX's optional inference gate meters LLM calls and the action gate can enforce evaluation time limits.
 - Distributed evolution — multiple AAAX instances running parallel evolutionary populations, federating through SSSN channels, with the best candidates shared across instances.
@@ -481,11 +568,13 @@ There are three integration patterns:
 **Key observation:** These frameworks all solve the same problem LLLM solves — agent orchestration, tool calling, state management, multi-agent coordination. They differ in programming model (graphs vs. roles vs. conversations) but are all LibOS-level concerns. AAAX doesn't need to pick one. It provides the kernel beneath all of them.
 
 **What integration looks like:**
+
 - A **LangGraph adapter** would translate LangGraph's graph-based state machine into a SSSN System, with graph nodes mapping to channel-connected subsystems and checkpoints mapping to channel message history.
 - A **CrewAI adapter** would map Crew roles to AAAX modules with scoped capabilities — an agent with the "researcher" role gets read access to search channels but not write access to output channels.
 - An **AutoGen adapter** would map GroupChat participants to docked SSSN Systems communicating through a BroadcastChannel.
 
 **What AAAX provides that these frameworks lack natively:**
+
 - Cross-framework interoperability — a LangGraph agent and a CrewAI agent can coexist in the same AAAX constellation, communicating through SSSN channels, without either framework knowing about the other.
 - Governance across frameworks — action gating, capability scoping, and audit trails apply uniformly regardless of which LibOS produced the action.
 - Network-level coordination — these frameworks are designed for single-process or single-machine deployment. AAAX + SSSN extends them to distributed, federated agent networks.
@@ -495,6 +584,7 @@ There are three integration patterns:
 **MCP** (Model Context Protocol, Anthropic) is an open standard for connecting agents to tools and data sources — often described as "the USB-C of agent tool integration." All major frameworks are adopting it in 2026. **A2A** (Agent-to-Agent Protocol, Google) enables agents from different frameworks to discover and invoke each other through standardized task interfaces.
 
 **Relationship to AAAX:**
+
 - **MCP** operates at the tool-connection layer — how an agent accesses a specific tool. AAAX operates at the governance layer — whether the agent is *allowed* to access that tool. These are complementary. MCP tools can be registered in AAAX's module registry as capabilities requiring explicit grants. An AAAX action gate checks capability tokens before MCP tool calls execute.
 - **A2A** operates at the agent-discovery and inter-agent communication layer. SSSN's DiscoveryChannel and typed channels serve a similar purpose within the AAAX ecosystem. For communication with external A2A agents, a bridge adapter translates between A2A task interfaces and SSSN channel messages. This is a federation concern (Phase 4).
 
@@ -558,20 +648,22 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 
 ### Phase 1: Core Skeleton
 
-- Implement AAAX as a `BaseSystem` subclass
+- Implement AAAX as a `BaseSystem` subclass with all six kernel functions
 - Implement internal private channels (capability_registry, policy_store)
-- Implement protocol channels (capability_request, action_gate, module_loader)
+- Implement protocol channels (capability_request, action_gate, module_loader, lifecycle, heartbeat)
 - Implement bootstrap sequence from TOML config
 - Basic policy: static rule-based allow/deny
 - **Ship default LibOS** (thin LLLM bridge with capability negotiation)
-- CLI: `aaax launch config.toml`
+- CLI: `aaax launch config.toml`, `aaax modules list/load/unload`
 - Test: dock two simple Systems, demonstrate capability-scoped channel access
+- Begin Productive Suite co-development (validate kernel protocols)
 
 ### Phase 2: LibOS Integration
 
 - Implement LLLM module adapter (translate `lllm.toml` → AAAX module manifest)
 - Implement generic module adapter interface for non-LLLM frameworks
 - Demonstrate a LLLM Tactic running as a docked AAAX subsystem
+- PS: first working multi-expert constellation with vanilla modules
 - Test: multi-module constellation with heterogeneous LibOS implementations
 
 ### Phase 3: Action Gating
@@ -579,6 +671,7 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 - Implement risk-level classification
 - Implement escalation routing (supervisor system, human-in-the-loop channel)
 - Integrate with LLLM proxy/sandbox system for tool execution
+- PS: action gate integration with domain-appropriate policies
 - Test: agent attempts side-effecting action, AAAX gates and authorizes
 
 ### Phase 4: Network and Federation
@@ -593,6 +686,7 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 - Resolve capability enforcement mechanism (§9.1)
 - Implement capability expiry and revocation
 - Implement graceful degradation (§9.5)
+- Lifecycle governance: pause, resume, drain under adversarial conditions
 - Stress testing: adversarial subsystems, capability exhaustion, network partition
 
 ---
@@ -601,13 +695,14 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 
 | Term | Definition |
 |---|---|
-| **AAAX** | Agent OS exokernel. A minimal SSSN System providing capability binding, action authorization, and module loading protocols. |
+| **AAAX** | Agent OS exokernel. A minimal SSSN System providing six kernel functions: constellation management, capability management, action gate, module loading, revocation/lifecycle, and bootstrap. |
 | **LibOS** | A swappable agent logic layer. LLLM is the first LibOS. Any framework implementing AAAX's protocols qualifies. |
 | **Default LibOS** | The LLLM-based LibOS shipped with AAAX for zero-config usage and as a reference implementation. |
 | **SSSN** | Simple System of Systems Network. The decentralized network of Systems and Channels that AAAX operates within. |
+| **AAAX-PS** | AAAX Productive Suite. The flagship application — a configurable multi-role system for societal analysis, scientific research, and operational coordination. Developed simultaneously with the kernel but structurally independent. |
 | **Docking** | The act of a System registering with an AAAX instance and accepting its governance. |
 | **Capability** | A scoped, time-limited token granting access to a specific resource (channel, tool, service). |
-| **Action Gate** | The AAAX protocol through which side-effecting operations are submitted for authorization. |
+| **Action Gate** | The AAAX protocol through which side-effecting operations are submitted for policy-configurable authorization. |
 | **Module** | A LibOS unit (e.g., a LLLM package) loaded into an AAAX instance as a docked subsystem. |
 | **Bootstrap** | The initialization sequence that creates AAAX's channels, loads policy, loads the default LibOS, and docks initial modules. |
 
@@ -615,10 +710,11 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 
 | Influence | What AAAX Borrows |
 |---|---|
-| **Exokernel / Aegis** (Engler et al., MIT) | Minimal kernel, secure bindings (bind-time check → access-time verify), visible revocation, LibOS pattern. The kernel multiplexes resources safely; all policy lives in the LibOS. |
+| **Exokernel / Aegis** (Engler et al., MIT) | Minimal kernel, secure bindings (bind-time check → access-time verify), visible revocation, abort protocol, LibOS pattern. The kernel multiplexes resources safely; all policy lives in the LibOS. |
 | **ROS / ROS 2** (Open Robotics) | Node/topic model → SSSN System/Channel. Launch system → AAAX bootstrap. Lifecycle nodes → SSSN state machine. Package system → LLLM packages. DDS discovery → SSSN DiscoveryChannel. QoS → SSSN channel config. Message types → SSSN MessageContent. |
 | **Capability-based security** (seL4, EROS, KeyKOS) | Capability tokens as the sole access control mechanism. No ambient authority — a system can only access resources for which it holds a valid capability. |
 | **Microkernel** (L4, Mach, QNX) | Services in user space, IPC as the core primitive. Crash isolation — a failing subsystem doesn't take down the kernel. |
+| **macOS Gatekeeper** | Trust verification at load time (manifest verification against policy), separate from the package system (LLLM) and the marketplace (future user-space app). |
 | **OpenClaw** | Demonstrates the end-user experience AAAX should enable: simple CLI launch, persistent agent with memory and skills, multi-channel access. AAAX provides the governed infrastructure beneath applications like OpenClaw. |
 
 ## Appendix C: References
@@ -634,3 +730,4 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 - SSSN GitHub. https://github.com/Productive-Superintelligence/sssn
 - OpenClaw Documentation. https://docs.openclaw.ai/
 - OpenClaw Architecture Overview. https://ppaolo.substack.com/p/openclaw-system-architecture-overview
+- AAAX-PS Design Note. (companion document)
