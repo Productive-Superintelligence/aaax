@@ -1,5 +1,6 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Productive-Superintelligence/aaax/main/docs/assets/aaax-logo-text-black.png" alt="AAAX Logo" width="600"/>
+  <!-- <img src="https://raw.githubusercontent.com/Productive-Superintelligence/aaax/main/docs/assets/aaax-logo-text-black.png" alt="AAAX Logo" width="600"/> -->
+  <img src="docs/assets/aaax-logo-text-black.png" alt="AAAX Logo" width="600" />
   <br>
   <h1>Advanced Autonomous Agentic ICS (AAAX)</h1>
   <h4>Exokernel for agentic information and computing services.</h4>
