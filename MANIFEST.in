@@ -1,0 +1,7 @@
+include LICENSE
+include README.md
+include mkdocs.yml
+include aaax.toml.example
+include requirements-monorepo.txt
+recursive-include docs *.md *.css *.svg *.png CNAME
+recursive-include examples *.md *.py *.toml
