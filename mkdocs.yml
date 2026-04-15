@@ -9,7 +9,7 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   logo: assets/aaax-logo-black.png
-  favicon: assets/aaax-logo-black.png
+  favicon: assets/aaax-logo-white.png
   font:
     text: Inter
     code: JetBrains Mono
