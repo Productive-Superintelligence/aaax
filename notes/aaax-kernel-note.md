@@ -9,7 +9,7 @@
 
 AAAX is a minimal exokernel for agent systems. It provides core protocols and protection mechanisms — nothing more. It does not dictate how agents think, plan, remember, or communicate. Those decisions belong to the LibOS layer.
 
-AAAX is implemented as a **SSSN System** — a root System that manages a constellation of docked subsystems through capability-scoped channel access and action authorization. It is not a separate runtime. It is a specific, privileged System template that operates within the SSSN network.
+AAAX is implemented as a **SSSN System** — a root System that manages a constellation of docked subsystems through topology-scoped channel wiring, capability-gated access to AAAX-mediated resources, and action authorization. It is not a separate runtime. It is a specific, privileged System template that operates within the SSSN network.
 
 ### Architecture Stack
 
@@ -68,13 +68,14 @@ SSSN (Simple System of Systems Network) provides exactly two abstractions: **Sys
 
 **Core primitives (validated from source):**
 
-- **System lifecycle:** `setup()` → `RUNNING` (step loop at configurable tick rate) → `STOPPED`. Unhandled exceptions in `step()` are caught and logged — the loop never crashes on a single step failure.
+- **System lifecycle:** `setup()` → `RUNNING` (step loop at configurable tick rate) → `STOPPED`. `PAUSED` exists as a state marker, but in current SSSN it does **not** suspend the run loop by itself. Unhandled exceptions in `step()` are caught and logged — the loop never crashes on a single step failure.
 - **Channel types:** PassthroughChannel (inline write), BroadcastChannel (fan-out), WorkQueueChannel (competing consumers with claim/ack/nack), MailboxChannel (per-recipient inbox), PeriodicChannel (active poll loop), DiscoveryChannel (service registry with TTL).
 - **Six consumption methods:** `read()`, `write()`, `subscribe()`, `unsubscribe()`, `acknowledge()`, `nack()`. Plus three host operations: `clear()`, `evict()`, `remove()`.
 - **Topology composition:** `add_subsystem(system, channels=[...])` explicitly wires channel access. **No auto-wiring** — every dependency is declared. A subsystem without explicit channel grants has zero channel access.
-- **Transport:** `launch()` for in-process (all channels in-memory), `publish(host, port)` for HTTP (FastAPI + uvicorn). Same code, different deployment. Scale is a deployment decision.
+- **Transport:** `launch()` for in-process (all channels in-memory), `publish(host, port)` for HTTP (FastAPI + uvicorn). Same code, different deployment. Scale is a deployment decision. The current HTTP path is source-tested end-to-end for auth and payload preservation, which matters for AAAX federation and remote executor calls.
 - **Visibility:** Channels default to `Visibility.PRIVATE` (never exposed over HTTP). `Visibility.PUBLIC` channels are exposed when `publish()` is called.
-- **Security:** Pluggable `ChannelSecurity` interface with three built-in implementations: `OpenSecurity` (development — everything allowed), `ACLSecurity` (role-based: read/write/admin hierarchy), `JWTChannelSecurity` (cryptographically signed tokens with per-channel scoping and expiry). Custom implementations plug in via a single constructor argument.
+- **Security:** Pluggable `ChannelSecurity` interface with three built-in implementations: `OpenSecurity` (development — everything allowed), `ACLSecurity` (role-based: read/write/admin hierarchy), `JWTChannelSecurity` (cryptographically signed tokens with per-channel scoping and expiry). Important current behavior: for **in-process** callers, `JWTChannelSecurity.authorize_*()` returns `True` and access is effectively governed by topology; full JWT validation is enforced by SSSN's HTTP transport. Custom implementations plug in via a single constructor argument.
+- **Explicit guarantees:** Current SSSN docs now codify the intended contract directly: topology is the local authority model, HTTP JWT validation is the remote authority model, `pause()` is marker-only unless a System overrides `run()`, and work queues are reclaimable claim/ack/nack queues rather than exactly-once delivery.
 - **Message model:** `ChannelMessage` is a frozen Pydantic model with `id`, `timestamp`, `sender_id`, `content` (typed `MessageContent` subclass), plus optional `correlation_id`, `reply_to`, `recipient_id`, and `metadata`.
 - **Backpressure:** Write buffer overflow (default 10k items) raises `RuntimeError` immediately.
 - **Persistence:** Messages are append-only in `MessageStore`. Never removed by reads — only by explicit host operations (`clear`, `evict`, `remove`). Acts as a truth-log.
@@ -91,9 +92,11 @@ LLLM (Low-Level Language Model) provides four abstractions: **Tactics** (program
 
 - **Dialog isolation.** Each agent maintains its own dialog — a per-agent append-only, forkable message tree. No shared global state. Agents share *information* by passing content between them in the Tactic's `call()` method, not by sharing dialogs.
 - **Tactic composability.** Different applications compose different Tactics. Tactics are stateless — each call spins up fresh agent instances. They can be subclassed, shared, and reused like library modules.
-- **Package system.** `lllm.toml` manifest, namespaced resources (`my_pkg.prompts:research/system`), `lllm pkg install` for distribution. Multiple packages can declare dependencies on each other.
+- **Package system.** `lllm.toml` manifest, namespaced resources (`my_pkg.prompts:research/system`), zip-based package install/export, and optional auto-discovery from `lllm_packages/` (project) and `~/.lllm/packages/` (user). Multiple packages can declare path-based dependencies, with optional aliases. For AAAX-managed runtimes, the important addition is that LLLM now supports **strict boot** via `load_runtime(..., discover_cwd=False, discover_shared_packages=False)` so the kernel can load only explicitly selected packages.
 - **Explicit wiring.** No auto-wiring, no hidden LLM calls. Every dependency is visible. The framework is "low-level by default" — it stops at Tactic as its highest abstraction.
-- **Proxy/sandbox system.** Tools are wrapped with rich metadata, documentation, and activation filtering. The proxy system enables composable, testable tool execution.
+- **Deterministic runtime surface.** `Runtime` now exposes public iteration/introspection APIs (`iter_items()`, `default_namespace`, `discovery_done`, `loaded_package_paths`) so AAAX adapters do not need to reach into private internals like `_resources`.
+- **Lazy provider loading.** Default invokers are registered lazily; importing LLLM no longer eagerly imports the provider stack. This makes AAAX bootstrap cheaper and reduces import-surface fragility.
+- **Proxy/sandbox system.** Tools are wrapped as proxies with rich metadata, documentation, and activation filtering. The default interpreter execution environment is lightweight and stateful, but not a strong isolation boundary; higher-assurance execution must be provided by the application or by swapping the execution backend.
 - **Replayable logging.** Every invocation recorded with enough information to recreate exact execution context — prompts, model arguments, tool results, costs.
 - **SSSN integration.** LLLM's architecture overview explicitly states: "Higher-level orchestration — systems of systems, agent networks — is left to the application layer. For those patterns, see the SSSN framework." The two are designed as complementary layers.
 
@@ -107,7 +110,9 @@ AAAX ships with a **default LibOS** in the same repository. This serves three pu
 2. **Reference implementation.** The default LibOS demonstrates how to implement AAAX's protocols (capability requests, action gate integration, module manifest format) — serving as documentation-by-example for anyone building a custom LibOS.
 3. **Dogfooding.** Developing the kernel and a LibOS together ensures the protocol surface stays practical and minimal.
 
-The default LibOS should be LLLM-based, providing a pre-wired Tactic that handles capability negotiation and action gate routing. It should be thin — a bridge between LLLM's abstractions and AAAX's protocols, not a framework of its own.
+The default LibOS should be LLLM-based, providing a pre-wired Tactic that handles capability negotiation, proxy activation, and action gate routing through AAAX-owned executors. It should be thin — a bridge between LLLM's abstractions and AAAX's protocols, not a framework of its own.
+
+Because AAAX is the first serious LibOS consumer, the default bridge should treat LLLM as a deterministic subsystem, not as an ambient runtime. In practice that means: disable import-time auto-init for managed processes (`LLLM_AUTO_INIT=0` when relevant), create named runtimes explicitly, and load only the package TOML chosen by AAAX's module loader. Interactive LLLM convenience features remain valuable for direct human use, but AAAX boot should not depend on them.
 
 The **AAAX Productive Suite (AAAX-PS)** is the flagship application built on this default LibOS. It covers three branches: societal analysis (the mind), scientific research (the phylogenetics), and operations (the body — planning for IoT/robotics/CPS). The suite ships with **vanilla modules** (standard LLM-based reasoning, basic memory, simple tool integrations) that work immediately. **Advanced modules** based on peer-reviewed research (SocioDojo, Analytica, Genesys, AAPM, etc.) can be installed as drop-in replacements via the LLLM package system, dramatically improving quality for specific domains. The composition model is the same — vanilla and advanced modules implement the same interfaces and are interchangeable.
 
@@ -140,24 +145,27 @@ Following Apple's macOS/iOS design pattern:
 
 | Layer | macOS | AAAX Stack |
 |---|---|---|
-| **Package system** | `pkg/installer`, `brew` | LLLM (`lllm.toml`, `lllm pkg install`, dependency resolution) |
+| **Package system** | `pkg/installer`, `brew` | LLLM (`lllm.toml`, `lllm pkg install`, shared package directories, dependency resolution) |
 | **Trust boundary** | Gatekeeper (code signing, notarization) | AAAX module loader (manifest verification against policy at dock time) |
 | **Marketplace** | App Store (user-space app) | Future marketplace app (a SSSN System or web service, not kernel) |
 
 LLLM handles package format, installation, and dependency resolution. AAAX handles the trust boundary: when a module is loaded (from any source), AAAX verifies its manifest against policy before docking it. A future marketplace is a user-space application, not kernel code.
 
+For interactive shells and pure LLLM apps, package auto-discovery is convenient. For AAAX boot, it should be considered disabled by policy: install places files on disk, but activation occurs only when the module loader resolves a specific package and builds a strict runtime for it.
+
 ```bash
 # LLLM handles packages (like brew/apt)
-lllm pkg install psi.advanced:analytica       # Install files to disk
-lllm pkg list                                  # List installed packages
+lllm pkg install ./releases/analytica.zip --scope project
+lllm pkg list
+lllm pkg export analytica ./releases/analytica-v1.zip
 
 # AAAX handles trust and runtime (like Gatekeeper + launchctl)
 aaax modules list                              # What's currently docked
-aaax modules load psi.advanced:analytica       # Verify → dock → issue capabilities
+aaax modules load analytica                    # Verify → dock → wire channels → grant remote/executor caps
 aaax modules unload analytica                  # Revoke → undock
 
 # Convenience: both in one step
-aaax install psi.advanced:analytica            # lllm pkg install + aaax modules load
+aaax install ./releases/analytica.zip          # lllm pkg install + aaax modules load
 ```
 
 ---
@@ -188,13 +196,13 @@ ROS organizes software into a **graph of nodes** connected by **edges** (topics,
 |---|---|---|
 | **Node** | SSSN `BaseSystem` | SSSN |
 | **Topic** (pub/sub) | SSSN `BroadcastChannel` | SSSN |
-| **Service** (request/response) | SSSN `MailboxChannel` + `correlation_id` / `reply_to` | SSSN |
+| **Service** (request/response) | SSSN paired request/response channels (`PassthroughChannel` or `MailboxChannel`) + `correlation_id` / `reply_to` | SSSN |
 | **Action** (goal + feedback) | LLLM Tactic (goal-oriented, multi-step, cancellable) | LibOS |
 | **ROS Master / DDS Discovery** | SSSN `DiscoveryChannel` + AAAX bootstrap registry | SSSN + AAAX |
 | **Parameter Server** | SSSN `PassthroughChannel` as config store, or `lllm.toml` | SSSN / LibOS |
 | **Launch system** | AAAX bootstrap config (`aaax.toml`) + `aaax launch` CLI | AAAX |
 | **Packages** | LLLM packages (`lllm.toml`, `lllm pkg install`) | LibOS |
-| **Lifecycle nodes** | SSSN System state machine (INIT → RUNNING → PAUSED → STOPPED) | SSSN |
+| **Lifecycle nodes** | SSSN System state machine (INIT → RUNNING → PAUSED → STOPPED), with `PAUSED` as an inspection marker unless overridden | SSSN |
 | **QoS profiles** | SSSN channel configuration (retention policy, backpressure, period) | SSSN |
 | **Message types** | SSSN `MessageContent` subclasses (typed Pydantic models) | SSSN |
 | **roslaunch** | `aaax launch config.toml` | AAAX |
@@ -202,7 +210,7 @@ ROS organizes software into a **graph of nodes** connected by **edges** (topics,
 ### 3.3 Key Differences from ROS
 
 - **Non-deterministic compute.** ROS nodes wrap deterministic algorithms (PID controllers, SLAM, path planners). AAAX systems wrap LLM-based agents whose outputs are non-deterministic. This motivates the action gate — a protection mechanism ROS doesn't need because its nodes don't hallucinate.
-- **Mutable "instruction set."** ROS drivers don't change the CPU's behavior. LLM prompting changes agent behavior through context. This motivates Dialog isolation (LLLM) and capability scoping (AAAX) — protection against context pollution.
+- **Mutable "instruction set."** ROS drivers don't change the CPU's behavior. LLM prompting changes agent behavior through context. This motivates Dialog isolation (LLLM) and mediated access control in AAAX — protection against context pollution.
 - **Open network.** ROS typically runs on a local robot or a trusted cluster. SSSN is designed as a decentralized internet of AI. This motivates JWT-based channel security and AAAX's opt-in governance model.
 - **Agent diversity.** ROS packages share standard message types (sensor_msgs, geometry_msgs) enabling interoperability. Agent systems have far less standardization — different apps need fundamentally different memory, planning, and reasoning strategies. This motivates the exokernel/LibOS split.
 - **No central master.** ROS 1's central master was a single point of failure, addressed in ROS 2 with DDS discovery. SSSN starts decentralized, and AAAX is opt-in governance, not a required master.
@@ -230,7 +238,7 @@ An exokernel / ROS-like architecture where:
 - The kernel (AAAX) provides only core protocols and protection mechanisms.
 - Agent-specific logic lives in swappable LibOS implementations (LLLM and others).
 - Systems run as autonomous service nodes on a decentralized network (SSSN).
-- Communication happens through typed channels with capability-scoped access.
+- Communication happens through typed channels with topology-scoped local wiring and capability-gated access to mediated resources.
 - Components can be reconfigured as libraries (LibOS pattern), and run as service nodes using channels for communication.
 
 ---
@@ -250,27 +258,27 @@ AAAX (root System)
 ├── [PRIVATE] module_registry        — tracks loaded modules and their manifests
 ├── [PRIVATE] policy_store           — authorization policies
 │
-├── [wired to subsystems] capability_request  — subsystems request access here
-├── [wired to subsystems] action_gate         — subsystems submit actions here
-├── [wired to subsystems] module_loader       — subsystems register modules here
-├── [wired to subsystems] lifecycle           — revocation, pause, resume commands
-├── [wired to subsystems] heartbeat           — liveness and topology awareness
+├── [common protocol] capability_request      — subsystems request mediated access here
+├── [common protocol] action_gate             — subsystems submit side effects here
+├── [common protocol] heartbeat               — liveness and topology awareness
+├── [privileged protocol] module_loader       — supervisors / bootstrap loaders only
+├── [privileged protocol] lifecycle           — supervisors / kernel operators only
 │
-└── Docked subsystems (each wired only to granted channels)
-    ├── System A  (wired to: capability_request, action_gate, + granted channels)
-    ├── System B  (wired to: capability_request, action_gate, + granted channels)
-    └── System C  (wired to: capability_request, action_gate, + granted channels)
+└── Docked subsystems
+    ├── Worker System A   (wired to: common protocol channels + approved local channels)
+    ├── Worker System B   (wired to: common protocol channels + approved local channels)
+    └── Supervisor System (wired to: common protocol channels + privileged protocol channels)
 ```
 
 ### Protection Model
 
-Protection comes from three mechanisms, all native to SSSN:
+Protection comes from three mechanisms:
 
 1. **Channel visibility.** AAAX's internal registries use `Visibility.PRIVATE`. They are never exposed over HTTP and never accessible to subsystems.
 
-2. **Topology control.** `add_subsystem(system, channels=[...])` explicitly scopes what each subsystem can see. A docked system cannot reference a channel it wasn't given.
+2. **Topology control.** `add_subsystem(system, channels=[...])` explicitly scopes what each subsystem can see. In current SSSN, this is the primary in-process isolation boundary. A docked system cannot reference a channel it wasn't given.
 
-3. **Capability tokens.** Channel access beyond the initial wiring requires a capability — requested through AAAX's `capability_request` channel, evaluated against policy, and issued as a scoped token. Builds on SSSN's `JWTChannelSecurity` with application-level capability semantics.
+3. **Capability tokens and mediated executors.** Capability tokens are used for AAAX-mediated resources: remote channels exposed over HTTP, external services, and AAAX-owned executor/proxy systems. In current SSSN, JWT capabilities are strongly enforced on HTTP transport; for local in-process channels, dynamic capability enforcement requires either AAAX-specific `ChannelSecurity` or proxy channels on top of topology control.
 
 ### AAAX on the Open Network
 
@@ -286,7 +294,7 @@ AAAX's protocol surface is the set of interactions that docked systems use to op
 
 ### 6.1 Capability Binding
 
-**Purpose:** A docked system requests access to a resource (a channel, a tool, an external service). AAAX evaluates policy and either grants a scoped capability or rejects.
+**Purpose:** A docked system requests access to a mediated resource: a remote channel, a tool executor, or an external service. AAAX evaluates policy and either grants a scoped capability or rejects. For local in-process channels, access is primarily established at dock time through topology wiring.
 
 **Channel:** `capability_request` (WorkQueueChannel — each request claimed and processed once by AAAX)
 
@@ -295,13 +303,13 @@ AAAX's protocol surface is the set of interactions that docked systems use to op
 ```yaml
 type: capability_request
 from: system-id
-resource: channel-id | tool-id | service-id
+resource: remote-channel-id | executor-id | service-id
 access: read | write | execute
 scope: {}          # optional constraints (TTL, rate limit, etc.)
 context: {}        # optional justification or task context
 ```
 
-**AAAX → Response (via MailboxChannel or reply_to):**
+**AAAX → Response (via validated `reply_to` or a kernel reply mailbox):**
 
 ```yaml
 type: capability_grant | capability_deny
@@ -315,15 +323,16 @@ reason: <string>                   # if denied
 
 - Capabilities are time-scoped by default. No permanent grants.
 - AAAX evaluates requests against its `policy_store`. The policy evaluation itself may be a LLLM Tactic or a simple rule engine — this is configurable.
-- Builds on SSSN's `JWTChannelSecurity.generate_token()` for cryptographic token issuance.
+- Builds on SSSN's `JWTChannelSecurity.generate_token()` for cryptographic token issuance on HTTP-exposed resources.
+- For local in-process channels, a capability grant is not sufficient by itself unless AAAX also supplies a custom local enforcement layer.
 
 ### 6.2 Action Authorization
 
-**Purpose:** A docked system wants to perform a side-effecting operation — call an external API, write to a database, send a message, actuate hardware. Instead of executing directly, it submits the action to AAAX for authorization.
+**Purpose:** A docked system wants to perform a side-effecting operation — call an external API, write to a database, send a message, actuate hardware. Instead of executing directly, it submits the action to AAAX for authorization and execution routing.
 
-**Channel:** `action_gate` (WorkQueueChannel — sequential processing, exactly-once semantics)
+**Channel:** `action_gate` (WorkQueueChannel — requests are claimed once by AAAX)
 
-The action gate is **policy-neutral**: it provides the mechanism (risk-level classification, escalation routing, capability verification) but the policy is defined per deployment. A financial analysis deployment might block trade execution. A robotics deployment might allow actuator commands but require human approval for irreversible actions. A research deployment might allow arbitrary code execution within a sandbox. The kernel doesn't care — it enforces whatever policy the application configures.
+The action gate is **policy-neutral**: it provides the mechanism (risk-level classification, escalation routing, capability verification, executor selection) but the policy is defined per deployment. A financial analysis deployment might block trade execution. A robotics deployment might allow actuator commands but require human approval for irreversible actions. A research deployment might allow arbitrary code execution through an AAAX-owned interpreter or sandbox executor. The kernel doesn't care — it enforces whatever policy the application configures.
 
 **Request → AAAX:**
 
@@ -344,6 +353,7 @@ type: action_approved | action_denied | action_escalated
 request_id: <id>
 reason: <string>
 modified_payload: {}   # AAAX may constrain parameters
+executor: <aaax-owned executor id>  # if approved
 escalated_to: <system-id>  # if supervisor review needed
 ```
 
@@ -356,11 +366,13 @@ escalated_to: <system-id>  # if supervisor review needed
 | `high` | Require explicit policy match or escalation |
 | `irreversible` | Default: escalate to supervisor or human-in-the-loop |
 
+**Execution rule:** `action_approved` means an AAAX-owned executor/proxy may perform the side effect. It does **not** mean the requesting subsystem may now bypass AAAX and perform the action itself.
+
 ### 6.3 Module Loading
 
-**Purpose:** A LibOS implementation registers itself with AAAX, declaring its capabilities and required resources. This is AAAX's **Gatekeeper** — the trust boundary for loading modules, regardless of where the module came from.
+**Purpose:** A LibOS implementation registers itself with AAAX, declaring its required local channels, mediated resources, and provided interfaces. This is AAAX's **Gatekeeper** — the trust boundary for loading modules, regardless of where the module came from.
 
-**Channel:** `module_loader` (WorkQueueChannel)
+**Channel:** `module_loader` (WorkQueueChannel, privileged)
 
 **Request → AAAX:**
 
@@ -369,8 +381,9 @@ type: module_register
 module_id: <namespaced id>       # e.g., "lllm.tactics:research_writer"
 framework: lllm | custom | <any>
 manifest:
-  requires_channels: [...]
-  requires_tools: [...]
+  requires_channels: [...]          # local in-process wiring
+  requires_executors: [...]         # AAAX-owned side-effecting executors / proxies
+  requires_remote_channels: [...]   # HTTP-exposed channels, if any
   provides_channels: [...]
   provides_services: [...]
   risk_profile: <low|medium|high>
@@ -381,6 +394,7 @@ manifest:
 ```yaml
 type: module_accepted | module_rejected
 module_id: <id>
+granted_wiring: [...]
 granted_capabilities: [...]
 system_id: <assigned system id>
 reason: <string>  # if rejected
@@ -389,21 +403,22 @@ reason: <string>  # if rejected
 **Design notes:**
 
 - The manifest format is framework-agnostic. LLLM packages use `lllm.toml`; the default LibOS translates this to AAAX's manifest format. Other frameworks provide their own translators.
-- Module loading includes creating the SSSN System, wiring it to granted channels via `add_subsystem()`, and starting its lifecycle.
-- When a module is accepted, AAAX pre-issues capabilities for what the manifest declared. Additional capabilities can be requested at runtime through the capability protocol.
+- Module loading includes creating the SSSN System, wiring approved local channels via `add_subsystem()`, and starting its lifecycle.
+- Wiring and capabilities are distinct. Local channels are granted by topology; remote channels and executors are granted by capabilities.
+- The `module_loader` channel is not wired to ordinary worker systems by default. It is an admin/supervisor interface.
 
 ### 6.4 Revocation and Lifecycle
 
 **Purpose:** Complete the governance loop. Without revocation, a misbehaving system keeps its capabilities until they expire naturally. Without lifecycle transitions, you can only fully start or fully stop a subsystem. This is Aegis's visible revocation + abort protocol mapped to agent systems.
 
-**Channel:** `lifecycle` (WorkQueueChannel)
+**Channel:** `lifecycle` (WorkQueueChannel, privileged)
 
 **Commands:**
 
-- **`revoke`** — Force-revoke all capabilities for a system (Aegis abort protocol). The system loses all access immediately.
-- **`pause`** — Suspend a docked subsystem. It remains docked but stops processing.
+- **`revoke`** — Force-revoke all mediated capabilities for a system (remote channels, executors, services). Topology wiring remains until the subsystem is paused, drained, or undocked.
+- **`pause`** — Mark a docked subsystem as paused and invoke its pause hook if available. In current SSSN this is an inspection/cooperation mechanism, not a hard scheduler stop.
 - **`resume`** — Resume a paused subsystem.
-- **`drain`** — Gracefully wind down a subsystem (finish current work, then stop). Used before undocking.
+- **`drain`** — Gracefully request quiescence (finish current work, stop accepting new work, then undock). Used before removal. Exact semantics depend on subsystem cooperation because SSSN provides channel drain but not a built-in system-level drain primitive.
 
 **Kernel methods:**
 
@@ -424,12 +439,13 @@ Bootstrap is the initialization sequence that runs before any protocol channels 
 1. Instantiate AAAX as a BaseSystem
 2. setup():
    a. Create internal private channels (capability_registry, module_registry, policy_store)
-   b. Create protocol channels (capability_request, action_gate, module_loader, lifecycle, heartbeat)
-   c. Load bootstrap policy (from config file or default)
-   d. Load default LibOS
-   e. Load initial modules from config:
-      validate manifest → create subsystem → wire channels → issue capabilities
-   f. Register with DiscoveryChannel if publishing to network
+   b. Create common protocol channels (capability_request, action_gate, heartbeat)
+   c. Create privileged protocol channels (module_loader, lifecycle)
+   d. Load bootstrap policy (from config file or default)
+   e. Load default LibOS
+   f. Load initial modules from config:
+      validate manifest → create subsystem → wire local channels → issue remote/executor capabilities
+   g. Register with DiscoveryChannel if publishing to network
 3. launch() or publish()
 4. step() loop:
    a. Process capability_request queue
@@ -449,13 +465,16 @@ name = "AAAX Kernel Instance"
 policy = "default"
 
 [aaax.libos]
-framework = "lllm"
-# Uses the default LibOS shipped with AAAX
+name = "lllm"
+strict_boot = true
+discover_shared_packages = false
 
 [[aaax.modules]]
 id = "my-agent"
 framework = "lllm"
+lllm_toml = "./lllm_packages/my-agent/lllm.toml"
 channels = ["task-input", "output-feed"]
+executors = ["web-research"]
 
 [aaax.network]
 publish = true
@@ -490,7 +509,7 @@ How traditional OS kernel responsibilities map to this architecture:
 | VFS / File Systems | Unified interface over heterogeneous knowledge sources | LibOS |
 | IPC | SSSN Channels (broadcast, work queue, mailbox, pub/sub) | SSSN |
 | Networking | SSSN transport (in-process + HTTP), federation | SSSN |
-| Security | Capability binding, action authorization, topology isolation | AAAX |
+| Security | Topology isolation, capability binding for mediated resources, action authorization | AAAX |
 | Virtualization | Framework-agnostic module loading, LibOS abstraction | AAAX |
 
 ---
@@ -517,7 +536,7 @@ There are three integration patterns:
 
 **What AAAX provides to OpenClaw:**
 
-- Tool execution routed through AAAX's action gate — so OpenClaw's shell commands, browser automation, and email sending are subject to authorization policy. This directly addresses OpenClaw's well-documented security concerns (CVE-2026-25253, prompt injection risks, unvetted community skills).
+- Tool execution routed through AAAX-owned action-gated executors — so OpenClaw's shell commands, browser automation, and email sending are subject to authorization policy. This directly addresses OpenClaw's well-documented security concerns (CVE-2026-25253, prompt injection risks, unvetted community skills).
 - Capability-scoped access to other systems in the constellation — an OpenClaw instance could request data from a research agent or delegate tasks to a coding agent, with AAAX managing the trust boundary.
 - Federation — multiple OpenClaw instances (e.g., for different team members) can coordinate through AAAX-managed channels rather than ad-hoc peer-to-peer connections.
 
@@ -533,7 +552,7 @@ There are three integration patterns:
 
 **What AAAX provides to AI Scientist:**
 
-- Action gating on experiment execution — AAAX can enforce compute budgets, sandbox code execution, and require approval for resource-intensive experiments.
+- Action gating on experiment execution — AAAX can route experiment runs through approved executors, enforce compute budgets, sandbox code execution, and require approval for resource-intensive experiments.
 - Module loading for the multi-agent pipeline — the idea generator, experiment runner, paper writer, and reviewer can each be separate docked systems with scoped capabilities, rather than a monolithic script.
 - Capability-scoped access to external resources — literature search APIs, GPU clusters, LaTeX compilation — each requiring explicit capability grants.
 - Audit trail — every experiment run, every code execution, every paper generation tracked through AAAX's channel history, supporting reproducibility.
@@ -555,7 +574,7 @@ There are three integration patterns:
 
 **What AAAX provides to AlphaEvolve/OpenEvolve:**
 
-- Sandboxed evaluation — each candidate program runs through the action gate, preventing malicious or runaway code from escaping the evaluation environment.
+- Sandboxed evaluation — each candidate program runs through the action gate and an AAAX-owned evaluator/executor, preventing malicious or runaway code from escaping the evaluation environment.
 - Compute budget enforcement — evolutionary search can consume unbounded resources; AAAX's optional inference gate meters LLM calls and the action gate can enforce evaluation time limits.
 - Distributed evolution — multiple AAAX instances running parallel evolutionary populations, federating through SSSN channels, with the best candidates shared across instances.
 
@@ -585,7 +604,7 @@ There are three integration patterns:
 
 **Relationship to AAAX:**
 
-- **MCP** operates at the tool-connection layer — how an agent accesses a specific tool. AAAX operates at the governance layer — whether the agent is *allowed* to access that tool. These are complementary. MCP tools can be registered in AAAX's module registry as capabilities requiring explicit grants. An AAAX action gate checks capability tokens before MCP tool calls execute.
+- **MCP** operates at the tool-connection layer — how an agent accesses a specific tool. AAAX operates at the governance layer — whether the agent is *allowed* to access that tool. These are complementary. MCP tools can be registered in AAAX's module registry as mediated executors or capabilities requiring explicit grants. An AAAX action gate authorizes and routes MCP-backed tool calls before they execute.
 - **A2A** operates at the agent-discovery and inter-agent communication layer. SSSN's DiscoveryChannel and typed channels serve a similar purpose within the AAAX ecosystem. For communication with external A2A agents, a bridge adapter translates between A2A task interfaces and SSSN channel messages. This is a federation concern (Phase 4).
 
 **Design principle:** AAAX should not reinvent these standards. Where MCP and A2A are adopted, AAAX provides the governance layer on top of them.
@@ -608,15 +627,20 @@ There are three integration patterns:
 
 ## 9. Open Design Questions
 
-### 9.1 Capability Enforcement Mechanism
+### 9.1 Dynamic Local Capability Enforcement
 
-Capabilities are *issued* by AAAX, but how are they *checked*?
+SSSN already gives AAAX two real enforcement mechanisms today:
 
-- **Option A: Channel middleware.** Extend SSSN's `ChannelSecurity` interface with an AAAX-aware implementation that validates capability tokens on every read/write. Reuses existing infrastructure.
-- **Option B: Honor system with audit.** Docked systems present capabilities; AAAX logs compliance. Weaker but simpler.
-- **Option C: Proxy channels.** Docked systems get proxy objects that check capabilities on every operation. Aligns with LLLM's proxy pattern.
+- **Topology for local channels.** `add_subsystem(..., channels=[...])` decides what an in-process subsystem can even reference.
+- **JWT validation for HTTP channels.** `JWTChannelSecurity` is fully enforced by SSSN's HTTP transport.
 
-Recommendation: Start with **Option A** — it reuses SSSN's pluggable security and enforces at the channel level.
+The remaining open question is whether AAAX also wants **dynamic in-process capability enforcement** beyond static topology:
+
+- **Option A: Custom local `ChannelSecurity`.** Extend SSSN's `ChannelSecurity` interface with an AAAX-aware implementation that checks capability tokens even for local callers.
+- **Option B: Proxy channels / mediated handles.** Docked systems get AAAX-owned proxy channels that enforce capabilities on each operation. Aligns naturally with LLLM's proxy pattern.
+- **Option C: Topology-only for local channels.** Keep local access static and use capabilities only for remote resources and mediated executors.
+
+Recommendation: Start with **Option C + B** — topology for local channels, capabilities for remote/executor resources, and AAAX-owned proxies for side effects. Add custom local `ChannelSecurity` only if hot-swappable in-process grants become a concrete need.
 
 ### 9.2 Policy Representation
 
@@ -640,7 +664,7 @@ Defer to a later design phase. Open questions: cross-instance capability trust, 
 
 ### 9.5 Graceful Degradation
 
-Capabilities are tokens, not live connections. A subsystem with a valid, unexpired capability continues operating even if AAAX is temporarily unavailable. New requests block until recovery. Follows the Aegis precedent: secure bindings outlive the kernel's active involvement.
+Capabilities are tokens, not live connections. A subsystem with a valid, unexpired capability for a remote channel or executor can continue using that mediated resource even if AAAX is temporarily unavailable. New capability requests and new action-gated operations block until recovery. Local topology grants remain as-wired until the subsystem is redocked or undocked.
 
 ---
 
@@ -653,9 +677,9 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 - Implement protocol channels (capability_request, action_gate, module_loader, lifecycle, heartbeat)
 - Implement bootstrap sequence from TOML config
 - Basic policy: static rule-based allow/deny
-- **Ship default LibOS** (thin LLLM bridge with capability negotiation)
+- **Ship default LibOS** (thin LLLM bridge with capability negotiation, action-gated proxy routing, and strict deterministic LLLM boot)
 - CLI: `aaax launch config.toml`, `aaax modules list/load/unload`
-- Test: dock two simple Systems, demonstrate capability-scoped channel access
+- Test: dock two simple Systems, demonstrate topology-scoped local access plus capability-gated mediated execution, with zero ambient LLLM package leakage
 - Begin Productive Suite co-development (validate kernel protocols)
 
 ### Phase 2: LibOS Integration
@@ -672,7 +696,7 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 - Implement escalation routing (supervisor system, human-in-the-loop channel)
 - Integrate with LLLM proxy/sandbox system for tool execution
 - PS: action gate integration with domain-appropriate policies
-- Test: agent attempts side-effecting action, AAAX gates and authorizes
+- Test: agent attempts side-effecting action, AAAX gates, routes, and audits execution
 
 ### Phase 4: Network and Federation
 
@@ -683,7 +707,7 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 
 ### Phase 5: Hardening
 
-- Resolve capability enforcement mechanism (§9.1)
+- Decide whether to add dynamic in-process capability enforcement (§9.1)
 - Implement capability expiry and revocation
 - Implement graceful degradation (§9.5)
 - Lifecycle governance: pause, resume, drain under adversarial conditions
@@ -712,7 +736,7 @@ Capabilities are tokens, not live connections. A subsystem with a valid, unexpir
 |---|---|
 | **Exokernel / Aegis** (Engler et al., MIT) | Minimal kernel, secure bindings (bind-time check → access-time verify), visible revocation, abort protocol, LibOS pattern. The kernel multiplexes resources safely; all policy lives in the LibOS. |
 | **ROS / ROS 2** (Open Robotics) | Node/topic model → SSSN System/Channel. Launch system → AAAX bootstrap. Lifecycle nodes → SSSN state machine. Package system → LLLM packages. DDS discovery → SSSN DiscoveryChannel. QoS → SSSN channel config. Message types → SSSN MessageContent. |
-| **Capability-based security** (seL4, EROS, KeyKOS) | Capability tokens as the sole access control mechanism. No ambient authority — a system can only access resources for which it holds a valid capability. |
+| **Capability-based security** (seL4, EROS, KeyKOS) | Capability tokens as the access mechanism for mediated resources. AAAX adapts this idea onto SSSN's topology-based local model and transport-enforced JWT model. |
 | **Microkernel** (L4, Mach, QNX) | Services in user space, IPC as the core primitive. Crash isolation — a failing subsystem doesn't take down the kernel. |
 | **macOS Gatekeeper** | Trust verification at load time (manifest verification against policy), separate from the package system (LLLM) and the marketplace (future user-space app). |
 | **OpenClaw** | Demonstrates the end-user experience AAAX should enable: simple CLI launch, persistent agent with memory and skills, multi-channel access. AAAX provides the governed infrastructure beneath applications like OpenClaw. |

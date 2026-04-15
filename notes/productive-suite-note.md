@@ -44,16 +44,18 @@ These branches are interconnected: analysis drives research (what questions to a
 
 The suite is a LibOS — it imports from the kernel but the kernel has zero imports from the suite. Every suite-specific concept (expert roles, domain templates, world models) lives entirely in this layer. The kernel remains application-agnostic.
 
+As the first citizen of AAAX, the suite is also the first citizen of the default LLLM LibOS. That means module activation is intentionally explicit: `lllm pkg install` makes a package available on disk, but the suite selects modules through config and AAAX boots LLLM in strict mode so nothing is activated implicitly from cwd or shared-package discovery.
+
 ### Capability Model
 
-The suite is **fully capable** — it can analyze, research, plan, coordinate, and execute actions in the real world. What any given deployment is *allowed* to do is a **policy decision**, not an architectural constraint. The AAAX kernel's action gate enforces whatever policy the deployment configures:
+The suite is **fully capable** — it can analyze, research, plan, coordinate, and execute actions in the real world. What any given deployment is *allowed* to do is a **policy decision**, not an architectural constraint. In current AAAX/SSSN terms, governance happens through topology-scoped local channel wiring, mediated capability grants for remote resources or executors, and action-gated execution through AAAX-owned proxies or executors:
 
 - A personal finance deployment might restrict to analysis-only (no trade execution) to avoid regulatory complexity.
 - A supply chain deployment might allow full execution (trigger reorders, reroute shipments) with human-in-the-loop for high-value decisions.
-- A research deployment might allow arbitrary code execution within a sandbox.
+- A research deployment might allow arbitrary code execution through an AAAX-owned interpreter or sandbox executor.
 - A robotics-integrated deployment might authorize actuator commands with escalation for irreversible actions.
 
-The architecture doesn't prescribe. The policy does.
+The architecture doesn't prescribe. The policy and executor bindings do.
 
 ---
 
@@ -75,7 +77,7 @@ Existing AI analysis tools (OpenAI Deep Research, Perplexity, OpenClaw, Hermes) 
 
 - **Configurable** expert roles — composable modules, not one agent with different prompts
 - **Heterogeneous communication** — LLM agents and quantitative models as equal citizens
-- **Governed** — capability-scoped access, action authorization, configurable safety policies
+- **Governed** — topology-scoped local access, capability-gated mediated resources, action authorization, configurable safety policies
 - **Improvable** — the system gets better over time, not just when the next model drops
 
 ---
@@ -183,20 +185,27 @@ The composition model makes upgrades seamless:
 # Start with vanilla
 aaax build ps --template energy-analyst --name my-suite
 
-# Later: upgrade reasoning engine to Analytica
-lllm pkg install psi.advanced:analytica
-aaax config my-suite.toml --reasoning analytica
+# Later: install Analytica
+lllm pkg install ./releases/analytica-v1.zip --scope project
+# Edit my-suite.toml:
+# [suite.analysis.reasoning]
+# engine = "analytica"
 
-# Later: upgrade memory to AAPM
-lllm pkg install psi.advanced:aapm
-aaax config my-suite.toml --memory aapm
+# Later: install AAPM
+lllm pkg install ./releases/aapm-v1.zip --scope project
+# [suite.analysis.reasoning]
+# memory = "aapm"
 
 # Later: add evolutionary discovery
-lllm pkg install psi.advanced:genesys
-aaax config my-suite.toml --research genesys
+lllm pkg install ./releases/genesys-v1.zip --scope project
+# [suite.research]
+# enabled = true
+# engine = "genesys"
 ```
 
 Same expert constellation. Same data channels. Same kernel governance. Better reasoning, memory, and discovery — module by module.
+
+Install is not activation. The Productive Suite treats installed LLLM packages as available inventory; activation happens only through suite configuration and AAAX module loading. That keeps upgrades deliberate and reproducible.
 
 ---
 
@@ -214,11 +223,11 @@ Same expert constellation. Same data channels. Same kernel governance. Better re
 
 **Scope:** Planning and coordination for IoT sensors, robotic actuators, cyber-physical systems. Does not replace low-level control loops. Provides the decision and planning layer.
 
-**Core capability:** Translates analysis-driven decisions into coordination signals for physical systems. Sensor data enters as SSSN channels. Planning outputs route through the action gate to authorized endpoints.
+**Core capability:** Translates analysis-driven decisions into coordination signals for physical systems. Sensor data enters as SSSN channels. Planning outputs route through the action gate to AAAX-owned executors or otherwise authorized endpoints.
 
 **Example roles:** AI Logistics Coordinator, AI Supply Chain Planner, AI Facility Monitor, AI Robot Planner.
 
-**Architecture:** The intelligence lives upstream in Analysis and Research. Operations is primarily channel adapters and action translators. A sensor publishes to a channel. A planning agent reads analysis outputs and sensor data, produces an action plan. The action plan routes through AAAX's action gate. What happens next depends on the configured policy.
+**Architecture:** The intelligence lives upstream in Analysis and Research. Operations is primarily channel adapters and action translators. A sensor publishes to a channel. A planning agent reads analysis outputs and sensor data, produces an action plan. The action plan routes through AAAX's action gate. What happens next depends on the configured policy and which executor bindings the deployment allows.
 
 ### 5.3 Research Branch — The Phylogenetics
 
@@ -237,6 +246,17 @@ This mirrors how real scientific communities work: individual researchers do ana
 
 **Architecture:** A Research branch deployment is a population of AAAX-governed constellations connected through SSSN:
 
+```text
+Genesys controller
+├── constellation-a  (candidate strategy A)
+├── constellation-b  (candidate strategy B)
+└── constellation-n  (candidate strategy N)
+```
+
+Candidate strategies, evaluation jobs, and selection signals move over ordinary SSSN channels. AAAX governs each local constellation; SSSN connects the larger evolutionary population.
+
+This federation model depends on SSSN's public-channel transport being trustworthy. Current SSSN now tests the HTTP path directly and preserves typed `MessageContent` payloads over transport, so research populations can exchange typed strategies and evaluation signals without ad hoc serialization wrappers.
+
 
 ---
 
@@ -254,26 +274,24 @@ aaax build ps --interactive
 # Launch a configured suite
 aaax launch my-energy-suite.toml
 
-# Launch with defaults (vanilla Analysis branch)
-aaax launch ps
-
 # Publish to the SSSN network
 aaax launch my-energy-suite.toml --publish
 
 # List available templates
-aaax templates ps
+aaax templates
 
 # Install advanced modules
-lllm pkg install psi.advanced:analytica
-lllm pkg install psi.advanced:sociodojo
-lllm pkg install psi.advanced:genesys
+lllm pkg install ./releases/analytica-v1.zip --scope project
+lllm pkg install ./releases/sociodojo-v1.zip --scope project
+lllm pkg install ./releases/genesys-v1.zip --scope project
 
-# Add a module to existing configuration
-aaax config my-energy-suite.toml --add-role forex-analyst
-aaax config my-energy-suite.toml --reasoning analytica
-
-# Subscribe to a provider's data channel
-aaax subscribe my-energy-suite.toml --channel sssn://news-provider/market-news
+# Then edit the suite config to select modules and channels:
+# [suite.analysis]
+# roles = ["equity-analyst", "commodity-expert", "policy-analyst", "macro-economist", "forex-analyst"]
+# [suite.analysis.reasoning]
+# engine = "analytica"
+# [suite.analysis.data]
+# channels = ["sssn://news-provider/market-news", "market-data", "economic-indicators"]
 ```
 
 ### 6.2 Suite Configuration
@@ -322,18 +340,18 @@ A GUI would add visual constellation editing, real-time monitoring, and a config
 ### Developers (Build with LLLM)
 - Create reusable Tactics, Prompts, Agents, and tools
 - Build new expert roles by composing modules
-- Distribute via `lllm pkg install` — like an app store
+- Distribute as LLLM package zips or shared packages
 - Publish advanced modules that upgrade vanilla components
 
 ### Providers (Publish on SSSN)
 - News providers push articles via BroadcastChannel
 - Market data vendors stream prices as periodic feeds
 - Cloud providers expose compute as SSSN Systems
-- Tool providers publish capabilities as channels
+- Tool providers expose channels or executor endpoints that AAAX can mediate
 - Any provider can join the open network
 
 ### Users (Use through AAAX)
-- Download expert modules from the LLLM package ecosystem
+- Install expert modules from LLLM package zips or shared package directories
 - Subscribe to data channels and services from SSSN providers
 - Configure and launch via `aaax build ps` / `aaax launch`
 - Upgrade incrementally: vanilla → advanced, module by module
@@ -377,7 +395,7 @@ The Operations branch of the Productive Suite serves as a bridge — proving the
 ## 10. Implementation Roadmap
 
 ### Phase 1: Foundation (Vanilla)
-- CLI: `aaax build ps`, `aaax launch ps`, `aaax templates ps`
+- CLI: `aaax build ps`, `aaax launch <suite-config>`, `aaax templates`
 - Vanilla modules: Standard Reasoning, Basic Memory, Web Research, Data Connector, Report Generator
 - Built-in templates: equity analyst, macro analyst, general researcher
 - Test: single-expert and three-expert constellations running via CLI

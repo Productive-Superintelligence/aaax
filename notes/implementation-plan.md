@@ -9,7 +9,7 @@
 
 ### 1.1 The One-Sentence Answer
 
-**AAAX is a managed umbrella System.** It wraps SSSN's raw Systems and Channels into a governed constellation — handling registration, access control, side-effect authorization, and lifecycle for everything inside it.
+**AAAX is a managed umbrella System.** It wraps SSSN's raw Systems and Channels into a governed constellation — handling registration, topology-scoped local wiring, mediated capability binding, side-effect routing, and lifecycle for everything inside it.
 
 ### 1.2 Without AAAX vs. With AAAX
 
@@ -25,7 +25,7 @@ With AAAX:
 ```python
 kernel = AAAXKernel(config)
 await kernel.setup()             # Creates all governance channels
-await kernel.dock(my_system)     # Registers, wires, issues capabilities
+    await kernel.dock(my_system)     # Registers, wires, grants mediated capabilities
 await kernel.launch()            # Starts everything
 ```
 
@@ -72,27 +72,28 @@ Following Apple's macOS/iOS design:
 
 | Layer | macOS | AAAX Stack |
 |---|---|---|
-| **Package system** | `pkg/installer`, `brew` | LLLM (`lllm.toml`, `lllm pkg install`, dependency resolution) |
+| **Package system** | `pkg/installer`, `brew` | LLLM (`lllm.toml`, `lllm pkg install`, shared package dirs, dependency resolution) |
 | **Trust boundary** | Gatekeeper (code signing, notarization check) | AAAX module loader (manifest verification against policy at dock time) |
 | **App Store** | App Store app (discovery, browsing, reviews) | Future marketplace app (a SSSN System or web service, not kernel) |
 
 ```bash
 # LLLM handles packages (like brew/apt)
-lllm pkg install psi.advanced:analytica       # Install files to disk
+lllm pkg install ./releases/analytica.zip --scope project
 lllm pkg list                                  # List installed packages
-lllm pkg search "commodity"                    # Search available packages
+lllm pkg export analytica ./releases/analytica-v1.zip
 
 # AAAX handles trust and runtime (like Gatekeeper + launchctl)
 aaax modules list                              # What's currently docked
-aaax modules inspect analytica                 # Manifest, capabilities, status
-aaax modules load psi.advanced:analytica       # Verify → create System → wire → issue capabilities
+aaax modules load analytica                    # Verify → create System → wire → grant mediated caps
 aaax modules unload analytica                  # Revoke capabilities → undock
 
 # Convenience: both in one step
-aaax install psi.advanced:analytica            # lllm pkg install + aaax modules load
+aaax install ./releases/analytica.zip          # lllm pkg install + aaax modules load
 ```
 
-`lllm pkg install` puts files on disk. `aaax modules load` reads the manifest, verifies against policy, creates the SSSN System, wires channels, and issues capabilities. Two separate operations, two separate concerns.
+`lllm pkg install` installs a package zip into `lllm_packages/` or `~/.lllm/packages/`. `aaax modules load` reads the manifest, verifies against policy, creates the SSSN System, wires approved local channels, and grants mediated capabilities for remote resources or AAAX-owned executors. Two separate operations, two separate concerns.
+
+AAAX bootstrap should not rely on LLLM's ambient cwd/shared-package discovery. The default LibOS should always create runtimes explicitly with `discover_cwd=False`, and it should enable shared-package loading only when the AAAX config intentionally asks for it.
 
 ---
 
@@ -105,6 +106,7 @@ aaax/
 ├── README.md
 ├── pyproject.toml                # Root package config
 ├── aaax.toml.example             # Example kernel config
+├── aaax_cli.py                   # Root CLI entry point (composes kernel + suite)
 │
 ├── aaax/                         # ── AAAX Kernel ──
 │   ├── __init__.py
@@ -116,7 +118,7 @@ aaax/
 │   ├── lifecycle.py              # Revocation, pause, resume, drain
 │   ├── policy.py                 # Policy interface + default rule engine
 │   ├── bootstrap.py              # Config-driven initialization (PID 1)
-│   ├── cli.py                    # CLI entry point
+│   ├── cli_kernel.py             # Kernel-only CLI commands
 │   ├── config.py                 # TOML config schemas (Pydantic)
 │   ├── protocols/                # Protocol message schemas
 │   │   ├── __init__.py
@@ -127,8 +129,8 @@ aaax/
 │   ├── libos/                    # ── Default LibOS (thin LLLM bridge) ──
 │   │   ├── __init__.py
 │   │   ├── bridge.py             # LLLM Tactic ↔ AAAX protocol adapter
-│   │   ├── capability_mixin.py   # Auto capability negotiation
-│   │   └── action_mixin.py       # Auto action gate routing
+│   │   ├── capability_mixin.py   # Auto capability negotiation for mediated resources
+│   │   └── action_mixin.py       # Route side effects through AAAX-owned executors
 │   └── tests/
 │       ├── test_kernel.py
 │       ├── test_constellation.py
@@ -208,10 +210,12 @@ aaax/     MAY import from:  sssn, lllm, stdlib
 aaax/     MUST NOT import:  ps/
 
 ps/       MAY import from:  aaax/, sssn, lllm, stdlib
+
+aaax_cli.py  MAY import from: aaax/, ps/, stdlib
 ```
 
 Enforced by:
-1. CI script: `grep -r "from ps\|import ps" aaax/ && exit 1`
+1. CI script: `rg -n "from ps|import ps" aaax/ && exit 1`
 2. `test_non_ps.py` — boots a kernel with a non-PS System
 3. Code review
 
@@ -223,8 +227,8 @@ Enforced by:
 name = "aaax"
 version = "0.1.0"
 dependencies = [
-    "sssn>=0.1.0",
-    "lllm>=0.1.0",
+    "sssn==0.0.1",
+    "lllm-core==0.1.1",
     "tomli>=2.0",
     "pydantic>=2.0",
     "click>=8.0",
@@ -234,12 +238,24 @@ dependencies = [
 ps = ["httpx>=0.27", "feedparser>=6.0"]
 
 [project.scripts]
-aaax = "aaax.cli:main"
+aaax = "aaax_cli:main"
 ```
+
+Pin framework dependencies exactly. AAAX is the first citizen of the default LibOS, and the Productive Suite is the first citizen of AAAX, so kernel-critical behavior should depend on explicit versions or workspace paths, not floating `>=` ranges.
+
+### 2.4 Framework Contract Policy
+
+AAAX should treat `sssn` and `lllm` as explicit contracts:
+
+- **SSSN contract:** topology is the local authority model; HTTP transport is the remote authority model; `pause()` is marker-only unless overridden; work queues are reclaimable rather than exactly-once.
+- **LLLM contract:** managed AAAX runtimes boot in strict mode; package install is separate from activation; AAAX adapters use public runtime APIs rather than LLLM private internals.
+- **Upgrade policy:** changes to either framework are accepted only behind AAAX contract tests. If a framework changes in a way AAAX does not want, AAAX fixes or forks it rather than weakening its own contract.
 
 ---
 
 ## 3. Core Implementation: The Six Kernel Functions
+
+The sketches below are source-grounded pseudocode. They intentionally follow current SSSN/LLLM behavior: local in-process access is primarily topology-wired via `add_subsystem(...)`, HTTP transport is where SSSN's JWT enforcement becomes real, and AAAX-mediated side effects must run through AAAX-owned executors or proxies.
 
 ### 3.1 AAAXKernel — The Umbrella System
 
@@ -247,6 +263,7 @@ aaax = "aaax.cli:main"
 from sssn.core.system import BaseSystem
 from sssn.channels.work_queue import WorkQueueChannel
 from sssn.channels.broadcast import BroadcastChannel
+from sssn.channels.mailbox import MailboxChannel
 from sssn.core.channel import Visibility
 
 from aaax.constellation import ConstellationManager
@@ -262,8 +279,8 @@ class AAAXKernel(BaseSystem):
     """
     The AAAX exokernel. A SSSN System that provides six functions:
     1. Constellation management (dock, undock, registry)
-    2. Capability management (issue, validate, expire)
-    3. Action gate (authorize side effects against policy)
+    2. Capability management (issue, validate, expire mediated tokens)
+    3. Action gate (authorize and route side effects through AAAX-owned executors)
     4. Module loading (manifest verification, system creation)
     5. Revocation and lifecycle (force-revoke, pause, resume, drain)
     6. Bootstrap (config-driven initialization)
@@ -306,7 +323,7 @@ class AAAXKernel(BaseSystem):
         )
         self.add_channel(self._policy_store)
 
-        # ── Protocol channels (wired to subsystems) ──
+        # ── Common protocol channels (wired to ordinary subsystems) ──
         self._cap_request_ch = WorkQueueChannel(
             id="aaax.capability-request",
             name="Capability Requests",
@@ -319,6 +336,13 @@ class AAAXKernel(BaseSystem):
         )
         self.add_channel(self._action_gate_ch)
 
+        self._kernel_reply_ch = MailboxChannel(
+            id="aaax.kernel-replies",
+            name="Kernel Replies",
+        )
+        self.add_channel(self._kernel_reply_ch)
+
+        # ── Privileged protocol channels (supervisors/bootstrap only) ──
         self._module_loader_ch = WorkQueueChannel(
             id="aaax.module-loader",
             name="Module Loader",
@@ -339,7 +363,7 @@ class AAAXKernel(BaseSystem):
 
         # ── Load default LibOS ──
         from aaax.libos.bridge import DefaultLibOS
-        self._libos = DefaultLibOS(kernel=self)
+        self._libos = DefaultLibOS(kernel=self, config=self.config.libos)
 
         # ── Load initial modules from config ──
         for mod_conf in self.config.modules:
@@ -360,16 +384,30 @@ class AAAXKernel(BaseSystem):
     # Function 1: Constellation Management
     # ════════════════════════════════════════════
 
-    async def dock(self, system: BaseSystem, channels: list[str] = None):
+    async def dock(
+        self,
+        system: BaseSystem,
+        channels: list[str] | None = None,
+        privileged: bool = False,
+    ):
         """Dock a subsystem into the managed constellation."""
-        protocol_channels = [
+        common_protocol_channels = [
             "aaax.capability-request",
             "aaax.action-gate",
+            "aaax.kernel-replies",
             "aaax.heartbeat",
         ]
-        all_channels = protocol_channels + (channels or [])
+        privileged_protocol_channels = [
+            "aaax.module-loader",
+            "aaax.lifecycle",
+        ]
+
+        all_channels = common_protocol_channels + (channels or [])
+        if privileged:
+            all_channels += privileged_protocol_channels
+
         self.add_subsystem(system, channels=all_channels)
-        self._constellation.register(system)
+        self._constellation.register(system, channels=all_channels)
 
     async def undock(self, system_id: str):
         """Remove a subsystem from the constellation."""
@@ -454,8 +492,18 @@ class AAAXKernel(BaseSystem):
         })
 
     async def _respond(self, request_msg, result):
-        if request_msg.reply_to:
-            await self.write_channel(request_msg.reply_to, data=result)
+        reply_channel = request_msg.reply_to
+        if reply_channel and self._constellation.is_valid_reply_target(
+            request_msg.sender_id, reply_channel,
+        ):
+            await self.write_channel(reply_channel, data=result)
+            return
+
+        await self.write_channel(
+            "aaax.kernel-replies",
+            data=result,
+            recipient_id=request_msg.sender_id,
+        )
 ```
 
 ### 3.2 Constellation Manager
@@ -469,8 +517,9 @@ from sssn.core.system import BaseSystem
 class SystemRecord:
     system_id: str
     name: str
-    channels: list[str]
-    status: str = "running"  # running | paused | draining
+    system: BaseSystem | None = None
+    channels: list[str] = field(default_factory=list)
+    status: str = "running"  # running | paused | draining | drained | revoked
 
 
 class ConstellationManager:
@@ -483,7 +532,8 @@ class ConstellationManager:
         self._systems[system.id] = SystemRecord(
             system_id=system.id,
             name=system.name,
-            channels=channels or [],
+            system=system,
+            channels=list(channels or []),
         )
 
     def unregister(self, system_id: str):
@@ -501,6 +551,10 @@ class ConstellationManager:
     def set_status(self, system_id: str, status: str):
         if system_id in self._systems:
             self._systems[system_id].status = status
+
+    def is_valid_reply_target(self, system_id: str, channel_id: str) -> bool:
+        record = self._systems.get(system_id)
+        return record is not None and channel_id in record.channels
 ```
 
 ### 3.3 Capability Manager
@@ -509,7 +563,6 @@ class ConstellationManager:
 import time
 import uuid
 from dataclasses import dataclass, field
-from sssn.core.security import JWTChannelSecurity
 from aaax.policy import PolicyEngine
 
 
@@ -528,12 +581,17 @@ ACCESS_LEVELS = {"read": 0, "write": 1, "execute": 2}
 
 
 class CapabilityManager:
+    """
+    Issues AAAX-local bearer tokens for mediated resources.
 
-    def __init__(self, secret: str = None):
+    Local in-process SSSN channel access remains topology-based via
+    add_subsystem(...). Use these tokens for remote HTTP channels,
+    AAAX-owned executors, and external services.
+    """
+
+    def __init__(self):
         self._capabilities: dict[str, Capability] = {}
         self._by_system: dict[str, set[str]] = {}  # system_id → set of tokens
-        self._secret = secret or uuid.uuid4().hex
-        self._jwt = JWTChannelSecurity(secret=self._secret)
 
     async def process_request(self, msg, policy: PolicyEngine) -> dict:
         content = msg.content.data
@@ -551,11 +609,17 @@ class CapabilityManager:
         if not decision.allowed:
             return {"type": "capability_deny", "resource": resource, "reason": decision.reason}
 
-        ttl = scope.get("ttl", 3600)
-        token = await self._jwt.generate_token(
-            system_id=system_id, role=access,
-            channel_ids=[resource], expires_in=ttl,
+        return await self.issue(
+            system_id=system_id,
+            resource=resource,
+            access=access,
+            scope=scope,
         )
+
+    async def issue(self, system_id: str, resource: str, access: str, scope: dict | None = None) -> dict:
+        scope = scope or {}
+        ttl = scope.get("ttl", 3600)
+        token = uuid.uuid4().hex
 
         cap = Capability(
             token=token, system_id=system_id, resource=resource,
@@ -570,10 +634,12 @@ class CapabilityManager:
             "token": token, "expires": cap.expires_at,
         }
 
-    def validate(self, token: str, resource: str, access: str) -> bool:
+    def validate(self, system_id: str, token: str, resource: str, access: str) -> bool:
         cap = self._capabilities.get(token)
         if not cap or cap.expires_at < time.time():
             self._capabilities.pop(token, None)
+            return False
+        if cap.system_id != system_id:
             return False
         if cap.resource != resource:
             return False
@@ -604,28 +670,42 @@ from aaax.capability import CapabilityManager
 
 
 class ActionGate:
-    """Policy-configurable authorization for side-effecting operations."""
+    """
+    Policy-configurable authorization and routing for side-effecting operations.
+
+    Approval authorizes an AAAX-owned executor/proxy to act; it does not permit
+    the requesting subsystem to bypass the kernel.
+    """
 
     async def process(self, msg, policy: PolicyEngine, capabilities: CapabilityManager) -> dict:
         content = msg.content.data
         system_id = content["from"]
         action = content["action"]
+        executor = content["executor"]
         target = content["target"]
         payload = content["payload"]
         cap_token = content.get("capability")
         risk_level = content.get("risk_level", "medium")
 
-        # Validate capability
-        if cap_token and not capabilities.validate(cap_token, target, "execute"):
+        if not cap_token:
+            return {
+                "type": "action_denied", "request_id": msg.id,
+                "reason": "Missing execute capability token",
+            }
+
+        if not capabilities.validate(system_id, cap_token, executor, "execute"):
             return {
                 "type": "action_denied", "request_id": msg.id,
                 "reason": "Invalid or expired capability token",
             }
 
-        # Evaluate against configurable policy
         decision = await policy.evaluate_action(
-            system_id=system_id, action=action, target=target,
-            payload=payload, risk_level=risk_level,
+            system_id=system_id,
+            action=action,
+            executor=executor,
+            target=target,
+            payload=payload,
+            risk_level=risk_level,
         )
 
         if decision.escalate:
@@ -640,6 +720,7 @@ class ActionGate:
             }
         return {
             "type": "action_approved", "request_id": msg.id,
+            "executor": executor,
             "modified_payload": decision.modified_payload or payload,
         }
 ```
@@ -658,7 +739,8 @@ class ModuleLoader:
     This is AAAX's Gatekeeper: the trust boundary for loading modules.
     
     LLLM handles package format and installation (files on disk).
-    AAAX handles verification and docking (runtime trust).
+    AAAX handles verification, local channel wiring, and issuance of
+    mediated capabilities (runtime trust).
     """
 
     async def load_from_config(self, kernel, config: ModuleConfig, policy: PolicyEngine):
@@ -680,13 +762,14 @@ class ModuleLoader:
                 "reason": decision.reason,
             }
 
-        system = await self._create_system(manifest)
-        capabilities = await self._issue_initial_capabilities(kernel, manifest)
+        system = await self._create_system(manifest, libos=kernel._libos)
         await kernel.dock(system, channels=manifest.get("requires_channels", []))
+        capabilities = await self._issue_initial_capabilities(kernel, manifest)
 
         return {
             "type": "module_accepted", "module_id": module_id,
             "system_id": system.id,
+            "granted_wiring": manifest.get("requires_channels", []),
             "granted_capabilities": capabilities,
         }
 
@@ -695,10 +778,11 @@ class ModuleLoader:
         return {
             "module_id": config.id,
             "framework": config.framework,
+            "lllm_toml": config.lllm_toml,
             "requires_channels": config.channels,
-            "requires_tools": [],
+            "requires_executors": config.executors,
+            "requires_remote_channels": config.remote_channels,
             "provides_channels": [],
-            "provides_services": [],
             "risk_profile": "low",
         }
 
@@ -707,10 +791,11 @@ class ModuleLoader:
         decision = await policy.evaluate_module(manifest)
         if not decision.allowed:
             raise PermissionError(f"Module {manifest['module_id']} rejected: {decision.reason}")
-        system = await self._create_system(manifest)
+        system = await self._create_system(manifest, libos=kernel._libos)
         await kernel.dock(system, channels=manifest.get("requires_channels", []))
+        await self._issue_initial_capabilities(kernel, manifest)
 
-    async def _create_system(self, manifest: dict) -> BaseSystem:
+    async def _create_system(self, manifest: dict, libos=None) -> BaseSystem:
         """Create a SSSN System from a manifest."""
         # For LLLM modules, import and instantiate the Tactic as a System
         framework = manifest.get("framework", "lllm")
@@ -720,38 +805,104 @@ class ModuleLoader:
                 id=manifest["module_id"],
                 name=manifest["module_id"],
                 manifest=manifest,
+                libos=libos,
             )
         else:
             # Generic: create a base system placeholder
             system = BaseSystem(id=manifest["module_id"], name=manifest["module_id"])
             return system
 
-    async def _issue_initial_capabilities(self, kernel, manifest: dict) -> list:
-        """Pre-issue capabilities for declared requirements."""
+    async def _issue_initial_capabilities(self, kernel, manifest: dict) -> list[dict]:
+        """Pre-issue capabilities for mediated requirements only."""
         capabilities = []
-        for channel in manifest.get("requires_channels", []):
-            cap = await kernel._capabilities.process_request(
-                _make_capability_msg(manifest["module_id"], channel, "read"),
-                kernel._policy,
+        for executor in manifest.get("requires_executors", []):
+            capabilities.append(
+                await kernel._capabilities.issue(
+                    system_id=manifest["module_id"],
+                    resource=executor,
+                    access="execute",
+                    scope={"issued_by": "module_loader"},
+                )
             )
-            if cap.get("type") == "capability_grant":
-                capabilities.append(cap)
+        for channel in manifest.get("requires_remote_channels", []):
+            capabilities.append(
+                await kernel._capabilities.issue(
+                    system_id=manifest["module_id"],
+                    resource=channel,
+                    access="read",
+                    scope={"issued_by": "module_loader"},
+                )
+            )
         return capabilities
 ```
+
+### 3.5A Default LibOS Bridge
+
+```python
+from lllm import load_runtime
+
+
+class DefaultLibOS:
+    """
+    Thin AAAX-owned bridge to LLLM.
+
+    AAAX is responsible for deterministic runtime creation. It should never
+    depend on ambient cwd discovery or import-time LLLM auto-init.
+    """
+
+    def __init__(self, kernel, config):
+        self.kernel = kernel
+        self.config = config
+
+    def build_runtime(self, module_id: str, toml_path: str):
+        return load_runtime(
+            toml_path=toml_path,
+            name=f"aaax:{module_id}",
+            discover_cwd=not self.config.strict_boot,
+            discover_shared_packages=self.config.discover_shared_packages,
+        )
+
+
+class TacticSystem(BaseSystem):
+    def __init__(self, id: str, name: str, manifest: dict, libos: DefaultLibOS | None = None):
+        super().__init__(id=id, name=name)
+        self.manifest = manifest
+        self._libos = libos
+
+    async def setup(self):
+        runtime = self._libos.build_runtime(
+            module_id=self.id,
+            toml_path=self.manifest["lllm_toml"],
+        )
+        # Instantiate tactic/agents from the explicit runtime here.
+```
+
+If AAAX launches helper subprocesses that import `lllm` directly, set `LLLM_AUTO_INIT=0` in those processes as well so import-time discovery never bypasses kernel policy.
 
 ### 3.6 Lifecycle Manager
 
 ```python
+import asyncio
+import inspect
+
+
 class LifecycleManager:
     """
     Revocation, pause, resume, drain.
-    Completes the governance loop — Aegis's visible revocation + abort protocol.
+
+    These controls are cooperative. Current SSSN exposes a PAUSED state marker
+    and channel-level drain helpers, but it does not suspend a system's run loop
+    or provide a built-in system-wide drain primitive.
     """
 
     async def process(self, msg, constellation, capabilities) -> dict:
         content = msg.content.data
         command = content["command"]  # revoke | pause | resume | drain
         target = content["system_id"]
+        timeout = content.get("timeout", 30.0)
+
+        if constellation.get(target) is None:
+            return {"type": "lifecycle_error", "reason": f"Unknown system: {target}"}
 
         if command == "revoke":
             capabilities.revoke_all(target)
@@ -767,23 +918,42 @@ class LifecycleManager:
             return {"type": "lifecycle_ok", "command": command, "system_id": target}
 
         elif command == "drain":
-            # Drain is async — mark as draining, caller handles timeout
-            constellation.set_status(target, "draining")
+            await self.drain(target, constellation, timeout)
             return {"type": "lifecycle_ok", "command": command, "system_id": target}
 
         return {"type": "lifecycle_error", "reason": f"Unknown command: {command}"}
 
     def pause(self, system_id: str, constellation):
+        record = constellation.get(system_id)
+        if record and record.system is not None:
+            record.system.pause()  # Marker-only in current SSSN unless overridden
         constellation.set_status(system_id, "paused")
 
     def resume(self, system_id: str, constellation):
+        record = constellation.get(system_id)
+        if record and record.system is not None:
+            record.system.resume()
         constellation.set_status(system_id, "running")
 
     async def drain(self, system_id: str, constellation, timeout: float):
-        import asyncio
+        record = constellation.get(system_id)
+        if record is None:
+            return
+
         constellation.set_status(system_id, "draining")
-        # Wait for system to finish current work (up to timeout)
-        await asyncio.sleep(min(timeout, 1.0))  # Simplified; real impl polls system state
+        system = record.system
+        if system is None:
+            constellation.set_status(system_id, "drained")
+            return
+
+        drain_fn = getattr(system, "drain", None)
+        if callable(drain_fn):
+            result = drain_fn(timeout=timeout)
+            if inspect.isawaitable(result):
+                await asyncio.wait_for(result, timeout=timeout)
+        else:
+            system.stop()  # Best-effort fallback; BaseSystem has no built-in drain
+
         constellation.set_status(system_id, "drained")
 ```
 
@@ -800,7 +970,7 @@ class PolicyDecision:
     reason: str = ""
     escalate: bool = False
     escalate_to: str = ""
-    modified_payload: dict = None
+    modified_payload: dict | None = None
 
 
 class PolicyEngine(ABC):
@@ -810,7 +980,7 @@ class PolicyEngine(ABC):
     async def evaluate_capability(self, system_id, resource, access, context) -> PolicyDecision: ...
 
     @abstractmethod
-    async def evaluate_action(self, system_id, action, target, payload, risk_level) -> PolicyDecision: ...
+    async def evaluate_action(self, system_id, action, executor, target, payload, risk_level) -> PolicyDecision: ...
 
     @abstractmethod
     async def evaluate_module(self, manifest: dict) -> PolicyDecision: ...
@@ -837,7 +1007,7 @@ class DefaultRulePolicy(PolicyEngine):
     async def evaluate_capability(self, system_id, resource, access, context):
         return PolicyDecision(allowed=True)
 
-    async def evaluate_action(self, system_id, action, target, payload, risk_level):
+    async def evaluate_action(self, system_id, action, executor, target, payload, risk_level):
         rule = self._rules.get("default_action", {}).get(risk_level, "deny")
         if rule == "allow":
             return PolicyDecision(allowed=True)
@@ -859,96 +1029,27 @@ class DefaultRulePolicy(PolicyEngine):
 ### 3.8 CLI
 
 ```python
-import asyncio
+# aaax_cli.py
 import click
+
+from aaax.cli_kernel import install, launch, modules
+from ps.cli import build, templates
 
 
 @click.group()
 def main():
-    """AAAX — Agent OS Kernel"""
+    """AAAX CLI entry point."""
     pass
 
 
-@main.command()
-@click.argument("config_path", required=False, default=None)
-@click.option("--publish", is_flag=True, help="Publish to SSSN network")
-def launch(config_path, publish):
-    """Launch an AAAX kernel instance."""
-    from aaax.config import AAAXConfig
-    from aaax.bootstrap import bootstrap_kernel
-    config = AAAXConfig.from_file(config_path) if config_path else AAAXConfig()
-    asyncio.run(_launch(config, publish))
-
-
-async def _launch(config, publish):
-    from aaax.bootstrap import bootstrap_kernel
-    kernel = await bootstrap_kernel(config)
-    if publish:
-        await kernel.publish(host=config.network.host, port=config.network.port)
-    else:
-        await kernel.launch()
-
-
-@main.group()
-def build():
-    """Build a new suite configuration."""
-    pass
-
-
-@build.command("ps")
-@click.option("--template", default=None, help="Built-in template name")
-@click.option("--name", default="my-suite", help="Configuration name")
-@click.option("--interactive", is_flag=True)
-def build_ps(template, name, interactive):
-    """Build a Productive Suite configuration."""
-    from ps.cli import build_suite
-    build_suite(template=template, name=name, interactive=interactive)
-
-
-@main.command()
-def templates():
-    """List available suite templates."""
-    from ps.cli import list_templates
-    list_templates()
-
-
-@main.group()
-def modules():
-    """Manage docked modules."""
-    pass
-
-
-@modules.command("list")
-def modules_list():
-    """List currently docked modules."""
-    click.echo("(Connects to running kernel heartbeat channel)")
-
-
-@modules.command("load")
-@click.argument("module_id")
-def modules_load(module_id):
-    """Load a module into the running kernel."""
-    click.echo(f"Loading {module_id}...")
-    # Sends ModuleRegister to the kernel's module-loader channel
-
-
-@modules.command("unload")
-@click.argument("module_id")
-def modules_unload(module_id):
-    """Unload a module (revoke + undock)."""
-    click.echo(f"Unloading {module_id}...")
-
-
-@main.command()
-@click.argument("module_id")
-def install(module_id):
-    """Install + load a module (convenience: lllm pkg install + aaax modules load)."""
-    import subprocess
-    click.echo(f"Installing package {module_id}...")
-    subprocess.run(["lllm", "pkg", "install", module_id], check=True)
-    click.echo(f"Loading into kernel...")
-    # aaax modules load
+main.add_command(launch)
+main.add_command(modules)
+main.add_command(install)
+main.add_command(build)
+main.add_command(templates)
 ```
+
+`aaax/cli_kernel.py` owns kernel-only commands such as `launch`, `modules`, and the convenience `install` wrapper (`lllm pkg install <zip>` followed by `aaax modules load <package-name>`). `ps/cli.py` owns suite builders and template listing. The root `aaax_cli.py` composes them into one CLI without introducing a kernel → suite import.
 
 ---
 
@@ -979,7 +1080,7 @@ class ProductiveSuite:
         kernel_config = AAAXConfig(
             id=f"aaax-ps-{self.suite_config.name}",
             name=f"PS: {self.suite_config.name}",
-            policy=self.suite_config.policy.get("execution", "default"),
+            policy=self.suite_config.policy.execution if self.suite_config.policy else "default",
         )
         self.kernel = await bootstrap_kernel(kernel_config)
 
@@ -1078,11 +1179,14 @@ class BaseRole(BaseSystem):
 
 ### 4.4 Advanced Module Package Structure
 
-Advanced modules are distributed as separate LLLM packages:
+Advanced modules are distributed as ordinary LLLM packages:
 
 ```
-psi-analytica/
+analytica/
 ├── lllm.toml
+├── prompts/
+├── tactics/
+├── configs/
 ├── analytica/
 │   ├── __init__.py
 │   └── engine.py          # Implements ps.modules.interfaces.ReasoningEngine
@@ -1092,21 +1196,29 @@ psi-analytica/
 ```toml
 # lllm.toml
 [package]
-name = "psi.advanced.analytica"
+name = "analytica"
 version = "0.1.0"
+description = "Advanced reasoning module for AAAX Productive Suite"
 
-[package.provides]
-reasoning_engine = "analytica.engine:AnalyticaReasoning"
+[prompts]
+paths = ["prompts"]
 
-[package.replaces]
-module = "ps.modules.reasoning.standard:StandardReasoning"
+[tactics]
+paths = ["tactics"]
+
+[configs]
+paths = ["configs"]
 ```
 
 ```bash
-lllm pkg install psi.advanced.analytica     # Files to disk
-aaax config my-suite.toml --reasoning analytica  # Update config
-# Next aaax launch reads the new config and uses Analytica
+lllm pkg export analytica ./releases/analytica-v1.zip
+lllm pkg install ./releases/analytica-v1.zip --scope project
+# Then select it in the suite config:
+# [suite.analysis.reasoning]
+# engine = "analytica"
 ```
+
+Package replacement semantics live in AAAX/PS configuration, not in the current LLLM package loader.
 
 ---
 
@@ -1123,16 +1235,24 @@ class NetworkConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8100
 
+class LibOSConfig(BaseModel):
+    name: str = "lllm"
+    strict_boot: bool = True
+    discover_shared_packages: bool = False
+
 class ModuleConfig(BaseModel):
     id: str
     framework: str = "lllm"
+    lllm_toml: str | None = None
     channels: list[str] = Field(default_factory=list)
+    executors: list[str] = Field(default_factory=list)
+    remote_channels: list[str] = Field(default_factory=list)
 
 class AAAXConfig(BaseModel):
     id: str = "aaax-main"
     name: str = "AAAX Kernel"
     policy: str | None = "default"
-    libos: str = "lllm"
+    libos: LibOSConfig = Field(default_factory=LibOSConfig)
     modules: list[ModuleConfig] = Field(default_factory=list)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
 
@@ -1149,11 +1269,17 @@ class AAAXConfig(BaseModel):
 # ps/config.py
 from pydantic import BaseModel, Field
 
+class AnalysisDataConfig(BaseModel):
+    channels: list[str] = Field(default_factory=list)
+
+class AnalysisReasoningConfig(BaseModel):
+    engine: str = "standard"
+    memory: str = "basic"
+
 class AnalysisConfig(BaseModel):
     roles: list[str] = Field(default_factory=lambda: ["analyst"])
-    data: dict = Field(default_factory=dict)
-    reasoning: str = "standard"
-    memory: str = "basic"
+    data: AnalysisDataConfig = Field(default_factory=AnalysisDataConfig)
+    reasoning: AnalysisReasoningConfig = Field(default_factory=AnalysisReasoningConfig)
 
 class ResearchConfig(BaseModel):
     enabled: bool = False
@@ -1165,14 +1291,21 @@ class OperationsConfig(BaseModel):
     sensors: list[str] = Field(default_factory=list)
     actuators: list[str] = Field(default_factory=list)
 
+class SuitePolicyConfig(BaseModel):
+    execution: str = "default"
+
+class SuiteNetworkConfig(BaseModel):
+    publish: bool = False
+    port: int | None = None
+
 class SuiteConfig(BaseModel):
     name: str = "my-suite"
     type: str = "ps"
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     research: ResearchConfig | None = None
     operations: OperationsConfig | None = None
-    policy: dict = Field(default_factory=lambda: {"execution": "default"})
-    network: dict = Field(default_factory=dict)
+    policy: SuitePolicyConfig = Field(default_factory=SuitePolicyConfig)
+    network: SuiteNetworkConfig = Field(default_factory=SuiteNetworkConfig)
 
     @classmethod
     def from_file(cls, path: str) -> "SuiteConfig":
@@ -1262,6 +1395,10 @@ pip install sssn lllm
 # Test kernel (must pass independently)
 python -m pytest aaax/tests/ -v
 
+# Verify framework contracts before changing AAAX assumptions
+( cd sssn && python -m pytest -q )
+( cd lllm && python -m pytest -q tests/units )   # run in env with LLLM deps installed
+
 # Test PS
 python -m pytest ps/tests/ -v
 
@@ -1289,7 +1426,7 @@ python -m examples.minimal_kernel
   - [ ] `aaax/config.py` — Pydantic schemas
   - [ ] `aaax/protocols/` — message schemas
 - [ ] **Default LibOS**
-  - [ ] `aaax/libos/bridge.py` — LLLM ↔ AAAX adapter
+  - [ ] `aaax/libos/bridge.py` — LLLM ↔ AAAX adapter with strict deterministic runtime boot
 - [ ] **CLI**
   - [ ] `aaax launch`, `aaax build ps`, `aaax templates`
   - [ ] `aaax modules list/load/unload`, `aaax install`
@@ -1309,4 +1446,5 @@ python -m examples.minimal_kernel
   - [ ] `examples/minimal_kernel/` — kernel without PS
 - [ ] **CI**
   - [ ] Structural independence check
+  - [ ] Framework contract checks: strict LLLM boot and SSSN transport/lifecycle assumptions
   - [ ] All tests green
