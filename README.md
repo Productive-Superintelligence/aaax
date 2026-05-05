@@ -18,6 +18,8 @@
   </a>
 </p>
 
+> ⚠️ In active development. Not ready for production use.
+
 AAAX stands for **Advanced Autonomous Agentic ICS** — **Information and Computing Services**. It sits above `sssn` and `lllm` and gives a shell-like control plane inspired by Exokernel and ROS:
 
 - dock and wire modules into a governed constellation
