@@ -34,7 +34,7 @@ jobs:
           pip install -e ./sssn
           pip install -e ./lllm
           pip install --no-deps -e .
-          pip install -r requirements-monorepo.txt
+          pip install -r requirements.txt
 
       - name: Configure git
         run: |
