@@ -18,16 +18,14 @@
   </a>
 </p>
 
-AAAX stands for **Advanced Autonomous Agentic ICS** — **Information and Computing Services**. It sits above `sssn` and `lllm` and gives that stack an operating-system-style control plane:
+AAAX stands for **Advanced Autonomous Agentic ICS** — **Information and Computing Services**. It sits above `sssn` and `lllm` and gives a shell-like control plane:
 
 - dock and wire modules into a governed constellation
 - issue and revoke capabilities for mediated resources
 - authorize side effects through an action gate
-- manage lifecycle events like revoke, pause, resume, and drain
-- bridge the default LibOS to `lllm`
-- provide the first-class kernel contract for higher applications such as the Productive Suite
+- manage lifecycle events like revoke, pause, resume, and drain.
 
-The current codebase is the first kernel slice: bootstrap, governance channels, policy engine, module loading, lifecycle control, and a minimal LLLM bridge are implemented and tested.
+The current codebase is the first kernel slice: bootstrap, governance channels, policy engine, module loading, lifecycle control, and a minimal LLLM bridge are implemented and tested. 
 
 ## Install
 
@@ -93,20 +91,10 @@ asyncio.run(main())
 
 ## Architecture Stack
 
-```text
-Productive Suite and other AAAX applications
-                  |
-                AAAX
-                  |
-      LLLM (default LibOS) + other LibOS adapters
-                  |
-                SSSN
-```
 
-- `SSSN` remains the transport and topology substrate.
-- `LLLM` remains the first LibOS and package/runtime layer.
+- `SSSN` the transport and topology substrate.
+- `LLLM` the LibOS and package/runtime layer.
 - `AAAX` owns governance, module trust, capability issuance, action authorization, and lifecycle.
-- `Productive Suite` is the first citizen of AAAX, not a kernel dependency.
 
 ## Project Layout
 
@@ -127,19 +115,3 @@ Full documentation is published at [aaax.one](https://aaax.one).
 - Architecture: kernel functions, framework boundaries, Productive Suite positioning
 - Core reference: config, governance, module loading, and LibOS bridge
 - API reference: public AAAX Python entry points
-
-## Development
-
-For monorepo development against the local framework copies:
-
-```bash
-pip install -e ./sssn
-pip install -e ./lllm
-pip install --no-deps -e .
-pip install -r requirements-monorepo.txt
-pytest aaax/tests -q
-NO_MKDOCS_2_WARNING=true python -m mkdocs build --strict
-python -m build
-```
-
-The published package still works outside this repo through normal PyPI dependencies. Inside the monorepo, `_vendor.py` prefers the checked-out `sssn/` and `lllm/` trees when they exist.
