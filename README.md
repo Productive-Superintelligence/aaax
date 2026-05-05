@@ -18,7 +18,7 @@
   </a>
 </p>
 
-AAAX stands for **Advanced Autonomous Agentic ICS** — **Information and Computing Services**. It sits above `sssn` and `lllm` and gives a shell-like control plane:
+AAAX stands for **Advanced Autonomous Agentic ICS** — **Information and Computing Services**. It sits above `sssn` and `lllm` and gives a shell-like control plane inspired by Exokernel and ROS:
 
 - dock and wire modules into a governed constellation
 - issue and revoke capabilities for mediated resources

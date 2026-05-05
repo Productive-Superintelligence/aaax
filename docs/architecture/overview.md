@@ -17,7 +17,6 @@ AAAX, short for **Advanced Autonomous Agentic ICS** — **Information and Comput
 - `SSSN` is the network substrate.
 - `LLLM` is the default LibOS.
 - `AAAX` is the governance and lifecycle kernel.
-- `Productive Suite` is the first citizen application layer.
 
 ## Why AAAX is separate
 

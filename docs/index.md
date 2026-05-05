@@ -12,7 +12,7 @@
 ## The Mental Model
 
 ```text
-Productive Suite and other AAAX applications
+          AAAX applications
                   |
                 AAAX
                   |
@@ -58,9 +58,6 @@ Local SSSN wiring remains topology authority. AAAX capabilities are for mediated
 **Deterministic boot.**
 The default LLLM bridge runs in strict boot mode so the kernel knows exactly which modules it is loading.
 
-**First citizen, not hard dependency.**
-Productive Suite is the reference AAAX application, but it is not imported by the kernel.
-
 ---
 
 ## Quick Start
@@ -99,7 +96,7 @@ The current package implements the first kernel slice:
 - capability manager and action gate
 - module loader with a minimal LLLM-backed `TacticSystem`
 - cooperative lifecycle handling
-- tests for boot, docking, capability issuance, action gating, and non-Productive-Suite boot paths
+- tests for boot, docking, capability issuance, action gating
 
 ---
 

@@ -84,7 +84,6 @@ nav:
     - Overview: architecture/overview.md
     - Kernel Functions: architecture/kernel-functions.md
     - Framework Boundaries: architecture/framework-boundaries.md
-    - Productive Suite: architecture/productive-suite.md
   - Core Reference:
     - core/index.md
     - Configuration: core/config.md

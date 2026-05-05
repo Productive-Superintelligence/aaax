@@ -16,7 +16,7 @@ class TrivialRobotNode(BaseSystem):
 
 
 @pytest.mark.asyncio
-async def test_kernel_processes_capability_request_without_productive_suite():
+async def test_kernel_processes_capability_request():
     kernel = await bootstrap_kernel(AAAXConfig(id="test-kernel", name="Test"), start_channels=True)
     robot = TrivialRobotNode(id="robot-1", name="Robot")
     await kernel.dock(robot)

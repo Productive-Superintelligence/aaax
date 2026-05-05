@@ -107,17 +107,3 @@ await kernel.publish(host="0.0.0.0", port=8100)
 This does not publish the kernel as a standalone object. It runs the AAAX constellation and attaches HTTP transport to channels whose SSSN visibility is `PUBLIC`.
 
 Only public channels are attached to HTTP transport. Internal governance channels remain kernel-local.
-
-## Monorepo development
-
-In this repository, AAAX prefers the vendored local framework copies when they exist. That keeps framework work and AAAX work aligned during development:
-
-```bash
-pip install -e ./sssn
-pip install -e ./lllm
-pip install --no-deps -e .
-pip install -r requirements-monorepo.txt
-NO_MKDOCS_2_WARNING=true python -m mkdocs build --strict
-```
-
-The `_vendor.py` helper only changes import precedence inside the monorepo. It does not change the published package contract.
