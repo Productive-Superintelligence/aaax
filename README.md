@@ -1,22 +1,11 @@
-<div align="center">
-  <!-- <img src="https://raw.githubusercontent.com/Productive-Superintelligence/aaax/main/docs/assets/aaax-logo-text-black.png" alt="AAAX Logo" width="600"/> -->
-  <img src="docs/assets/aaax-logo-text-black.png" alt="AAAX Logo" width="600" />
-  <br>
-  <h1>Advanced Autonomous Agentic ICS (AAAX)</h1>
-  <h4>Exokernel for agentic information and computing services.</h4>
-</div>
+  
 
-<p align="center">
-  <a href="https://aaax.one">
-    <img alt="Docs" src="https://img.shields.io/badge/docs-aaax.one-black">
-  </a>
-  <a href="https://pypi.org/project/aaax/">
-    <img alt="PyPI" src="https://img.shields.io/pypi/v/aaax.svg">
-  </a>
-  <a href="https://github.com/Productive-Superintelligence/aaax/blob/main/LICENSE">
-    <img alt="License" src="https://img.shields.io/github/license/Productive-Superintelligence/aaax">
-  </a>
-</p>
+
+# Advanced Autonomous Agentic ICS (AAAX)
+
+#### Exokernel for agentic information and computing services.
+
+
 
 > ⚠️ In active development. Not ready for production use.
 
@@ -93,7 +82,6 @@ asyncio.run(main())
 
 ## Architecture Stack
 
-
 - `SSSN` the transport and topology substrate.
 - `LLLM` the LibOS and package/runtime layer.
 - `AAAX` owns governance, module trust, capability issuance, action authorization, and lifecycle.
@@ -117,3 +105,12 @@ Full documentation is published at [aaax.one](https://aaax.one).
 - Architecture: kernel functions, framework boundaries, Productive Suite positioning
 - Core reference: config, governance, module loading, and LibOS bridge
 - API reference: public AAAX Python entry points
+
+
+
+
+
+## Roadmap
+
+[ ] Hypervisor layer
+
