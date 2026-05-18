@@ -18,6 +18,11 @@ AAAX stands for **Advanced Autonomous Agentic ICS** — **Information and Comput
 
 The current codebase is the first kernel slice: bootstrap, governance channels, policy engine, module loading, lifecycle control, and a minimal LLLM bridge are implemented and tested. 
 
+1. It is used with lllm, or any other agentic frameworks, it provides a module protocol, defines ways to compose modules into agents
+2. It also guards low-level
+
+
+
 ## Install
 
 ```bash
