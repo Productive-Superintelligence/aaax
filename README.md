@@ -1,7 +1,7 @@
   
 
 
-# Advanced Autonomous Agentic ICS (AAAX)
+# Advanced Autonomous Agent eXecutor (AAAX)
 
 #### Exokernel for agentic information and computing services.
 
@@ -9,7 +9,7 @@
 
 > ⚠️ In active development. Not ready for production use.
 
-AAAX stands for **Advanced Autonomous Agentic ICS** — **Information and Computing Services**. It sits above `sssn` and `lllm` and gives a shell-like control plane inspired by Exokernel and ROS:
+It sits above `sssn` and `lllm` and gives a shell-like control plane inspired by Exokernel and ROS:
 
 - dock and wire modules into a governed constellation
 - issue and revoke capabilities for mediated resources
