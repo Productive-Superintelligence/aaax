@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from aaax.boundary import copy_mapping
 
 
 def _load_toml(path: str | Path) -> dict[str, Any]:
@@ -65,7 +68,7 @@ class PolicyEngine(ABC):
 
 class DefaultRulePolicy(PolicyEngine):
     def __init__(self, rules: dict[str, Any] | None = None) -> None:
-        self._rules = rules or {
+        self._rules = copy_mapping(rules) if isinstance(rules, Mapping) and rules else {
             "default_capability": "allow",
             "default_action": {
                 "low": "allow",

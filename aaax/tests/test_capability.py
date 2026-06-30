@@ -1,4 +1,5 @@
 import time
+from types import MappingProxyType
 
 import pytest
 
@@ -32,6 +33,46 @@ async def test_capability_request_issues_and_validates_token():
 
     assert result["type"] == "capability_grant"
     assert manager.validate("system-a", result["token"], "executor:web-research", "execute")
+
+
+@pytest.mark.asyncio
+async def test_capability_request_accepts_read_only_mapping_payload():
+    manager = CapabilityManager()
+    context = {"risk": "low"}
+    payload = MappingProxyType(
+        {
+            "from": "system-a",
+            "resource": "executor:web-research",
+            "access": "execute",
+            "context": MappingProxyType(context),
+        }
+    )
+
+    result = await manager.process_request(make_request(payload), DefaultRulePolicy())
+
+    context["risk"] = "changed"
+    assert result["type"] == "capability_grant"
+    assert manager.validate("system-a", result["token"], "executor:web-research", "execute")
+
+
+@pytest.mark.asyncio
+async def test_capability_scope_boundary_copies_read_only_mappings():
+    manager = CapabilityManager()
+    nested = {"owner": "system-a"}
+    scope = {"ttl": 3600.0, "details": MappingProxyType(nested)}
+
+    grant = await manager.issue(
+        "system-a",
+        "executor:web-research",
+        "execute",
+        scope=MappingProxyType(scope),
+    )
+    scope["ttl"] = 0.0
+    nested["owner"] = "changed"
+
+    stored_scope = manager._capabilities[grant["token"]].scope
+    assert stored_scope == {"ttl": 3600.0, "details": {"owner": "system-a"}}
+    assert isinstance(stored_scope["details"], dict)
 
 
 @pytest.mark.asyncio

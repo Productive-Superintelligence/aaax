@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from collections.abc import Mapping
 from typing import Any
 
+from aaax.boundary import copy_mapping
 from aaax.capability import CapabilityManager
 from aaax.constellation import ConstellationManager
 
@@ -11,7 +13,7 @@ from aaax.constellation import ConstellationManager
 def _message_content_data(msg) -> dict[str, Any]:
     content = getattr(msg, "content", None)
     data = getattr(content, "data", None)
-    return data if isinstance(data, dict) else {}
+    return copy_mapping(data) if isinstance(data, Mapping) else {}
 
 
 class LifecycleManager:

@@ -1,4 +1,5 @@
 import time
+from types import MappingProxyType
 
 import pytest
 
@@ -61,6 +62,34 @@ async def test_action_gate_approves_valid_execute_capability():
 
     assert result["type"] == "action_approved"
     assert result["executor"] == "executor:web-research"
+
+
+@pytest.mark.asyncio
+async def test_action_gate_accepts_read_only_mapping_payload():
+    capabilities = CapabilityManager()
+    grant = await capabilities.issue("system-a", "executor:web-research", "execute")
+    gate = ActionGate()
+    payload_backing = {"query": "aaax"}
+    request_backing = {
+        "from": "system-a",
+        "action": "search",
+        "executor": "executor:web-research",
+        "target": "query",
+        "payload": MappingProxyType(payload_backing),
+        "capability": grant["token"],
+        "risk_level": "low",
+    }
+
+    result = await gate.process(
+        make_request(MappingProxyType(request_backing)),
+        DefaultRulePolicy(),
+        capabilities,
+    )
+    payload_backing["query"] = "changed"
+
+    assert result["type"] == "action_approved"
+    assert result["modified_payload"] == {"query": "aaax"}
+    assert isinstance(result["modified_payload"], dict)
 
 
 @pytest.mark.asyncio

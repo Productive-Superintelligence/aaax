@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from aaax.boundary import copy_boundary_value, copy_mapping
 from aaax.policy import PolicyEngine
 
 ACCESS_LEVELS = {"read": 0, "write": 1, "execute": 2}
@@ -13,7 +15,7 @@ ACCESS_LEVELS = {"read": 0, "write": 1, "execute": 2}
 def _message_content_data(msg) -> dict[str, Any]:
     content = getattr(msg, "content", None)
     data = getattr(content, "data", None)
-    return data if isinstance(data, dict) else {}
+    return copy_mapping(data) if isinstance(data, Mapping) else {}
 
 
 def _requester_id(msg, payload: dict[str, Any]) -> str:
@@ -45,6 +47,8 @@ class CapabilityManager:
         access = str(content["access"])
         scope = content.get("scope", {})
         context = content.get("context", {})
+        if isinstance(context, Mapping):
+            context = copy_mapping(context)
 
         decision = await policy.evaluate_capability(
             system_id=system_id,
@@ -73,7 +77,7 @@ class CapabilityManager:
         access: str,
         scope: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        scope = scope or {}
+        scope = copy_mapping(scope) if isinstance(scope, Mapping) else {}
         ttl = float(scope.get("ttl", 3600.0))
         token = uuid.uuid4().hex
         now = time.time()
@@ -84,7 +88,7 @@ class CapabilityManager:
             access=access,
             issued_at=now,
             expires_at=now + ttl,
-            scope=scope,
+            scope=copy_boundary_value(scope),
         )
         self._capabilities[token] = capability
         self._by_system.setdefault(system_id, set()).add(token)

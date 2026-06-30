@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from aaax._vendor import ensure_vendor_paths
+from aaax.boundary import copy_mapping
 from aaax.config import LibOSConfig
 
 ensure_vendor_paths()
@@ -35,7 +36,7 @@ class TacticSystem(BaseSystem):
 
     def __init__(self, id: str, name: str, manifest: dict, libos: DefaultLibOS | None = None) -> None:
         super().__init__(id=id, name=name)
-        self.manifest = manifest
+        self.manifest = copy_mapping(manifest)
         self._libos = libos
         self.runtime = None
 

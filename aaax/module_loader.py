@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from aaax._vendor import ensure_vendor_paths
+from aaax.boundary import copy_mapping
 from aaax.config import ModuleConfig
 from aaax.policy import PolicyEngine
 
@@ -25,7 +27,9 @@ class ModuleLoader:
 
     async def process_request(self, kernel, msg, policy: PolicyEngine) -> dict[str, Any]:
         payload = getattr(getattr(msg, "content", None), "data", {}) or {}
+        payload = copy_mapping(payload) if isinstance(payload, Mapping) else {}
         manifest = payload.get("manifest", {})
+        manifest = copy_mapping(manifest) if isinstance(manifest, Mapping) else {}
         module_id = str(payload.get("module_id") or manifest.get("module_id"))
 
         decision = await policy.evaluate_module(manifest)
@@ -49,7 +53,7 @@ class ModuleLoader:
 
     def _parse_manifest(self, config: ModuleConfig) -> dict[str, Any]:
         if config.manifest is not None:
-            manifest = dict(config.manifest)
+            manifest = copy_mapping(config.manifest)
             manifest.setdefault("module_id", config.id)
             manifest.setdefault("framework", config.framework)
             manifest.setdefault("lllm_toml", config.lllm_toml)

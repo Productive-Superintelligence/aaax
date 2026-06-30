@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
+from aaax.boundary import copy_mapping
 from aaax.capability import CapabilityManager
 from aaax.policy import PolicyEngine
 
@@ -9,7 +11,7 @@ from aaax.policy import PolicyEngine
 def _message_content_data(msg) -> dict[str, Any]:
     content = getattr(msg, "content", None)
     data = getattr(content, "data", None)
-    return data if isinstance(data, dict) else {}
+    return copy_mapping(data) if isinstance(data, Mapping) else {}
 
 
 def _requester_id(msg, payload: dict[str, Any]) -> str:
@@ -31,6 +33,8 @@ class ActionGate:
         executor = str(content["executor"])
         target = str(content["target"])
         payload = content.get("payload", {})
+        if isinstance(payload, Mapping):
+            payload = copy_mapping(payload)
         cap_token = content.get("capability")
         risk_level = str(content.get("risk_level", "medium"))
 
