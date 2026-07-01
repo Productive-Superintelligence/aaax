@@ -4,41 +4,52 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aaax"
-version = "0.0.1a0"
-description = "Advanced Autonomous Agentic ICS (Information and Computing Services) kernel"
+version = "0.2.0a0"
+description = "Strategy layer for composing PSI tactics, channels, and services."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "Junyan Cheng" }]
 keywords = [
-    "agents",
-    "agentic systems",
-    "multi-agent",
-    "governance",
-    "kernel",
-    "sssn",
-    "lllm",
+  "agents",
+  "agentic systems",
+  "strategy",
+  "fastapi",
+  "sssn",
+  "lllm",
+  "psihub",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Software Development :: Libraries :: Python Modules",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "click>=8.0",
-    "lllm-core>=0.1.1",
-    "pydantic>=2.0",
-    "sssn>=0.0.1",
-    "tomli>=2.0.1; python_version < \"3.11\"",
+  "fastapi>=0.115",
+  "pydantic>=2.7",
+  "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+integrations = [
+  "lllm-core>=0.2.0",
+  "psihub>=0.0.1",
+  "sssn>=0.1.0",
+]
+dev = [
+  "build>=1.2",
+  "httpx>=0.27",
+  "pytest>=8.0",
+  "twine>=5.1",
 ]
 
 [project.urls]
@@ -47,29 +58,17 @@ Documentation = "https://aaax.one"
 Repository = "https://github.com/Productive-Superintelligence/aaax"
 Issues = "https://github.com/Productive-Superintelligence/aaax/issues"
 
-[project.optional-dependencies]
-dev = [
-    "build>=1.2.2",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "twine>=5.1.1",
-]
-docs = [
-    "mkdocs>=1.6,<2.0",
-    "mkdocs-autorefs>=1.0,<2.0",
-    "mkdocs-material>=9.7,<10.0",
-    "mkdocstrings[python]>=0.26,<2.0",
-    "pymdown-extensions>=10.0,<11.0",
-]
-
 [project.scripts]
 aaax = "aaax.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["aaax*"]
-exclude = ["aaax.tests*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+aaax = ["py.typed"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["aaax/tests"]
+testpaths = ["tests"]
+addopts = "-q"

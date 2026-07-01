@@ -1,20 +1,24 @@
-from importlib.metadata import PackageNotFoundError, version
+"""AAAX strategy layer."""
 
-from aaax.bootstrap import bootstrap_kernel
-from aaax.config import AAAXConfig, LibOSConfig, ModuleConfig, NetworkConfig
-from aaax.kernel import AAAXKernel
+from .loader import load_strategy
+from .models import (
+    StrategyInfo,
+    StrategyResource,
+    StrategyRunRequest,
+    StrategyRunResponse,
+)
+from .server import create_strategy_app
+from .strategy import Strategy
 
-try:
-    __version__ = version("aaax")
-except PackageNotFoundError:
-    __version__ = "0.1.0"
+__version__ = "0.2.0a0"
 
 __all__ = [
+    "Strategy",
+    "StrategyInfo",
+    "StrategyResource",
+    "StrategyRunRequest",
+    "StrategyRunResponse",
     "__version__",
-    "AAAXConfig",
-    "LibOSConfig",
-    "ModuleConfig",
-    "NetworkConfig",
-    "AAAXKernel",
-    "bootstrap_kernel",
+    "create_strategy_app",
+    "load_strategy",
 ]
