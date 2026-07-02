@@ -1,6 +1,0 @@
-[submodule "lllm"]
-	path = lllm
-	url = https://github.com/Productive-Superintelligence/lllm
-[submodule "sssn"]
-	path = sssn
-	url = https://github.com/Productive-Superintelligence/sssn
