@@ -1,12 +1,13 @@
 # Package Composition
 
-AAAX composes packages by importing manifest resources into a strategy. A package
-remains the unit of publication and discovery. A strategy is the unit of launch.
+AAAX composes packages by mounting manifest resources into a shell. A package
+remains the unit of publication and discovery. A strategy is the shell session
+that chooses local names, binds handlers, and serves endpoints.
 
 ```mermaid
 flowchart TD
   A["psi.toml"] --> B["PsiHub manifest"]
-  B --> C["AAAX resources"]
+  B --> C["mounted resources"]
   C --> D["Tactic handlers"]
   C --> E["Channel handlers"]
   C --> F["Docs, examples, assets"]
@@ -15,34 +16,34 @@ flowchart TD
   F --> H["Agent or human context"]
 ```
 
-## Direct Package Strategy
+## Direct Package Shell
 
-`strategy_from_package(path)` creates one strategy from one package:
+`strategy_from_package(path)` creates one shell from one package:
 
 ```python
 from aaax import strategy_from_package
 
 
-strategy = strategy_from_package("packages/analyst-pack")
+shell = strategy_from_package("packages/analyst-pack")
 ```
 
-The strategy name defaults to `package.name`. Package card metadata is copied
-onto the strategy and package resource.
+The shell name defaults to `package.name`. Package card metadata is copied onto
+the strategy metadata and package resource.
 
 ## Imported Packages
 
-`Strategy.use_package(path)` adds one package to an existing strategy:
+`Strategy.use_package(path)` mounts one package into an existing shell:
 
 ```python
 from aaax import Strategy
 
 
-strategy = Strategy("workbench")
-strategy.use_package("packages/sources", prefix="sources")
-strategy.use_package("packages/analysts", prefix="analysts")
+shell = Strategy("analysis-shell")
+shell.use_package("packages/sources", prefix="sources")
+shell.use_package("packages/analysts", prefix="analysts")
 ```
 
-Prefixes only affect local strategy names. The original `psi://` refs stay in
+Prefixes only affect local shell names. The original `psi://` refs stay in
 the resource records.
 
 ## Binding
@@ -53,10 +54,10 @@ When `bind=True`, AAAX tries to bind:
 - Package channels to a local SSSN `LocalStore`.
 - Services that declare one `tactic` to the same tactic handler.
 
-Use `bind=False` when you only want the resource graph and metadata:
+Use `bind=False` when you only want the mount table and metadata:
 
 ```python
-strategy.use_package("packages/remote-only", bind=False)
+shell.use_package("packages/remote-only", bind=False)
 ```
 
 That is useful for remote packages, planning tools, and agent handoff contexts

@@ -1,6 +1,6 @@
 # Tactic Endpoint
 
-Tactics are the most direct executable resources in AAAX.
+Tactics are the most direct executable resources mounted in the AAAX shell.
 
 ## 1. Write A Tactic
 
@@ -20,7 +20,7 @@ runtime = "python"
 description = "Classify one input payload."
 ```
 
-## 3. Serve And Call
+## 3. Serve The Shell And Call
 
 ```bash
 aaax serve . --port 8400

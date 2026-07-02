@@ -1,6 +1,6 @@
 # Strategy Resources
 
-`StrategyResource` is the public resource record:
+`StrategyResource` is the public record for one mounted resource:
 
 ```python
 from aaax import StrategyResource
@@ -24,7 +24,7 @@ resource = StrategyResource(
   and `custom`.
 
 `name`
-: The local name used in the strategy and HTTP paths.
+: The local name used in the shell and HTTP paths.
 
 `ref`
 : The stable package or service ref. Package imports preserve `psi://` refs.
@@ -41,11 +41,10 @@ resource = StrategyResource(
 
 ## Local Name Versus Ref
 
-The same package resource can have different local names in different
-strategies:
+The same package resource can have different local names in different shells:
 
 ```python
-strategy.use_package("packages/review", prefix="analysts")
+shell.use_package("packages/review", prefix="analysts")
 ```
 
 The tactic named `review` in the package becomes `analysts.review` locally, but
@@ -55,7 +54,7 @@ its ref remains:
 psi://demo/review/tactics/review
 ```
 
-This lets a strategy compose multiple packages without rewriting their package
+This lets a shell compose multiple packages without rewriting their package
 identity.
 
 ## Handler Binding

@@ -1,6 +1,6 @@
 # Serve A Package
 
-This tutorial creates a tiny package and serves it through AAAX.
+This tutorial creates a tiny package, mounts it in the AAAX shell, and serves it.
 
 ## 1. Create Files
 
@@ -57,8 +57,9 @@ aaax inspect analyst-pack
 ```
 
 Expected resources include package, tactic, channel, service, and run records.
+This is the shell's first move: list what is mounted before you run it.
 
-## 3. Serve
+## 3. Open The Shell Surface
 
 ```bash
 aaax serve analyst-pack --port 8400

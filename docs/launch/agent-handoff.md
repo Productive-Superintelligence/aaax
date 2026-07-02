@@ -1,7 +1,7 @@
 # Agent Handoff
 
 AAAX is not an agent runtime, but it is designed so an agent can receive useful
-application context without guessing.
+shell context without guessing.
 
 ## What An Agent Can Read
 
@@ -26,7 +26,7 @@ From those endpoints it can learn:
 
 ## What An Agent Can Do
 
-The same service boundary lets an agent:
+The same shell surface lets an agent:
 
 - call one tactic with `/tactics/{name}/run`;
 - invoke a named service through `/resources/{name}/invoke`;
@@ -38,7 +38,7 @@ The same service boundary lets an agent:
 
 ```mermaid
 flowchart TD
-  A["AAAX resource map"] --> D["Agent context"]
+  A["AAAX mount table"] --> D["Agent context"]
   B["Package card"] --> D
   C["Docs and examples"] --> D
   D --> E["Choose endpoint"]
@@ -48,4 +48,4 @@ flowchart TD
 ```
 
 The handoff contract is metadata plus endpoints. AAAX avoids telling the agent
-how to reason, but gives it enough stable structure to act carefully.
+how to reason, but gives it a shell-shaped surface it can inspect before acting.

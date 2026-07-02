@@ -1,6 +1,6 @@
 # Compose Packages
 
-Use a strategy file when the application needs more than one package or custom
+Use a strategy file when the shell needs more than one package or custom
 top-level behavior.
 
 ## 1. Import Packages
@@ -10,13 +10,13 @@ from aaax import Strategy
 
 
 def build_strategy() -> Strategy:
-    strategy = Strategy(
-        "analysis-workbench",
-        description="Compose source channels and analyst tactics.",
+    shell = Strategy(
+        "analysis-shell",
+        description="Mount source channels and analyst tactics.",
     )
-    strategy.use_package("packages/source-pack", prefix="source")
-    strategy.use_package("packages/analyst-pack", prefix="analyst")
-    return strategy
+    shell.use_package("packages/source-pack", prefix="source")
+    shell.use_package("packages/analyst-pack", prefix="analyst")
+    return shell
 ```
 
 The resource `events` from `source-pack` becomes `source.events`. The resource
@@ -29,22 +29,22 @@ from aaax import Strategy
 
 
 def build_strategy() -> Strategy:
-    strategy = Strategy("analysis-workbench")
-    strategy.use_package("packages/source-pack", prefix="source")
-    strategy.use_package("packages/analyst-pack", prefix="analyst")
+    shell = Strategy("analysis-shell")
+    shell.use_package("packages/source-pack", prefix="source")
+    shell.use_package("packages/analyst-pack", prefix="analyst")
 
-    @strategy.runner
+    @shell.runner
     def run(input_value, *, context=None):
         return {
             "task": input_value,
-            "resources": [resource.name for resource in strategy.resources],
+            "resources": [resource.name for resource in shell.resources],
             "context": context or {},
         }
 
-    return strategy
+    return shell
 ```
 
-## 3. Serve And Call
+## 3. Serve The Shell And Call
 
 ```bash
 aaax serve strategy.py --port 8400

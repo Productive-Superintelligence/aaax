@@ -2,13 +2,13 @@
 
 Composition is the main reason AAAX exists. LLLM owns tactic boundaries, SSSN
 owns channels and stores, and PsiHub owns package manifests. AAAX gathers those
-resources into one strategy and exposes them as one application surface.
+resources into one shell and exposes them as one command surface.
 
 <div class="psi-flow">
   <div><strong>Describe</strong><br />Write `psi.toml` resources.</div>
-  <div><strong>Import</strong><br />Load the package into a strategy.</div>
+  <div><strong>Mount</strong><br />Load the package into a shell.</div>
   <div><strong>Bind</strong><br />Attach local tactic and channel handlers.</div>
-  <div><strong>Serve</strong><br />Expose the strategy as FastAPI.</div>
+  <div><strong>Serve</strong><br />Expose the shell as FastAPI.</div>
 </div>
 
 ## Resource Kinds
@@ -36,7 +36,7 @@ matter for launch context, not only executable tactics.
 - Local names must be path-segment friendly.
 - Prefix imported packages when names might collide.
 - Keep original `psi://` refs in resource records.
-- Treat channels as resources with service-facing handlers, not hidden runtime state.
+- Treat channels as resources with shell-facing handlers, not hidden runtime state.
 - Treat docs, examples, assets, package cards, and config as first-class context.
 
 ## Next

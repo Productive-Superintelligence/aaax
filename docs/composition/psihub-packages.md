@@ -1,13 +1,13 @@
 # PsiHub Packages
 
-AAAX can load a package folder or a direct `psi.toml` file:
+AAAX can mount a package folder or a direct `psi.toml` file:
 
 ```python
 from aaax import load_strategy
 
 
-strategy = load_strategy("packages/analyst-pack")
-strategy = load_strategy("packages/analyst-pack/psi.toml")
+shell = load_strategy("packages/analyst-pack")
+shell = load_strategy("packages/analyst-pack/psi.toml")
 ```
 
 The loader recognizes a package after it checks for `strategy.py` and `aaax.py`
@@ -17,7 +17,7 @@ in a directory. That keeps explicit strategy files in control when both exist.
 
 AAAX imports:
 
-- `[package]` as a package resource and strategy metadata.
+- `[package]` as a package resource and shell metadata.
 - `[card]` into package and strategy metadata.
 - `[config]` as `config.default`.
 - `[schemas.*]` as schema resources.
@@ -54,7 +54,7 @@ When LLLM is installed, normal callables and `run` methods are wrapped through
 When a package has channels and `bind=True`, AAAX creates a local SSSN store:
 
 ```python
-strategy.use_package("packages/source", store=".aaax/source-store")
+shell.use_package("packages/source", store=".aaax/source-store")
 ```
 
 If no store path is provided, the package folder gets a `.sssn` store. Existing

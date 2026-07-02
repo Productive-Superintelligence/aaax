@@ -43,7 +43,7 @@ def test_docs_use_strategy_launch_framing():
         path.read_text(encoding="utf-8") for path in sources.values()
     )
 
-    assert "strategy and launch boundary" in combined
+    assert "PSI shell" in combined
     assert "PsiHub package" in combined
     assert "FastAPI" in combined
     assert "Advanced Autonomous Agentic ICS" not in combined
@@ -62,7 +62,8 @@ def test_docs_build_with_shared_visual_contract(tmp_path: Path):
     assert "psi-header-nav" in index
     assert "Overview" in index
     assert "Composition" in index
-    assert "Launch" in index
+    assert "Shell" in index
+    assert "aaax-shell" in index
     assert "Tutorials" in index
     assert "Reference" in index
     assert "aaax-logo-text-black.png" in index

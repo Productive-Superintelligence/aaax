@@ -1,7 +1,7 @@
 # Channels And Services
 
-AAAX makes channels and services available through the same strategy boundary as
-tactics. This lets an application expose both "do work" and "share state"
+AAAX makes channels and services available through the same shell boundary as
+tactics. This lets a mounted package expose both "do work" and "share state"
 operations without inventing a separate API surface.
 
 ## Channels
@@ -74,5 +74,5 @@ curl -X POST http://127.0.0.1:8400/resources/api/invoke \
 ```
 
 This is intentionally conservative. AAAX does not launch arbitrary service
-processes from a manifest. It exposes the service-facing resource boundary and
+processes from a manifest. It exposes the shell-facing resource boundary and
 lets deployment or agent tooling decide how far to go.

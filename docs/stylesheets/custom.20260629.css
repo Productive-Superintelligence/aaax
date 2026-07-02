@@ -441,6 +441,40 @@ html [data-md-color-scheme="slate"] .md-nav--primary .md-nav__title[for="__drawe
   margin-bottom: 0.35rem;
 }
 
+.aaax-shell {
+  background: #050505;
+  border: 1px solid #050505;
+  border-radius: 0.1rem;
+  color: #f7f7f7;
+  font-family: var(--md-code-font-family);
+  font-size: 0.74rem;
+  line-height: 1.6;
+  margin: 1.25rem 0;
+  overflow-x: auto;
+  padding: 0.95rem 1rem;
+}
+
+.aaax-shell span {
+  display: block;
+  white-space: nowrap;
+}
+
+.aaax-shell__prompt {
+  color: #8ce99a;
+  display: inline !important;
+  font-weight: 700;
+}
+
+.aaax-shell__muted {
+  color: #adb5bd;
+  display: inline !important;
+}
+
+.aaax-shell__ok {
+  color: #74c0fc;
+  display: inline !important;
+}
+
 .psi-flow {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));

@@ -1,6 +1,8 @@
 # Python API
 
-AAAX's public Python API is intentionally compact.
+AAAX's public Python API is intentionally compact. The objects still use the
+name `Strategy`, but conceptually a strategy is the shell session: a mounted
+resource table plus an optional top-level command.
 
 ## Strategy
 
@@ -42,8 +44,9 @@ from aaax import StrategyResource, StrategyInfo
 from aaax import StrategyRunRequest, StrategyRunResponse
 ```
 
-`StrategyResource` describes one resource. `StrategyInfo` describes a full
-strategy. `StrategyRunRequest` and `StrategyRunResponse` are the HTTP envelopes.
+`StrategyResource` describes one mounted resource. `StrategyInfo` describes a
+full shell session. `StrategyRunRequest` and `StrategyRunResponse` are the HTTP
+envelopes.
 
 ## Loading
 
@@ -61,7 +64,7 @@ from aaax import load_strategy, strategy_from_package
 - a `module:attribute` target.
 
 `strategy_from_package(path, name=None, prefix=None, store=None, bind=True)`
-creates a strategy directly from one PsiHub package.
+creates a shell directly from one PsiHub package.
 
 ## Package Composition
 

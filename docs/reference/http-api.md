@@ -1,6 +1,6 @@
 # HTTP API
 
-AAAX exposes JSON endpoints through FastAPI.
+AAAX exposes the shell surface as JSON endpoints through FastAPI.
 
 ## Envelopes
 
@@ -44,7 +44,7 @@ Responses use:
 : Returns resources with kind `channel`.
 
 `POST /run`
-: Calls the strategy runner.
+: Calls the shell runner.
 
 `POST /resources/{name}/invoke`
 : Invokes any resource by local name.

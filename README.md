@@ -1,16 +1,26 @@
 # AAAX
 
-AAAX is the PSI strategy and launch boundary.
+AAAX is the PSI shell for package-shaped agent systems.
 
-A `Strategy` names the LLLM tactics, SSSN channels, service endpoints, package
-refs, configuration, docs, examples, and local runner that together form one
-useful system. Its first public surface is a FastAPI server: point AAAX at a
-strategy file or a PsiHub package folder and it exposes a small service that
-humans, scripts, and future coding-agent workflows can call.
+Use it to inspect a PsiHub package, mount its tactics and channels, bind local
+handlers, open a small FastAPI surface, and hand that surface to a human,
+script, or coding agent. The feel is intentionally shell-like: name the package,
+see the resources, run one command, and get a callable system.
 
-AAAX stays lightweight. It does not replace LLLM, SSSN, PsiHub, Codex, Claude
-Code, schedulers, sandboxes, or deployment platforms. It composes resources and
-prepares an application-facing environment around them.
+```bash
+$ aaax inspect packages/analyst-pack
+analysis-pack: Demo analyst package.
+package analysis-pack psi://demo/analysis-pack
+tactic echo psi://demo/analysis-pack/tactics/echo
+channel events psi://demo/analysis-pack/channels/events
+
+$ aaax serve packages/analyst-pack --port 8400
+Uvicorn running on http://127.0.0.1:8400
+```
+
+AAAX does not replace LLLM, SSSN, PsiHub, Codex, Claude Code, schedulers,
+sandboxes, or deployment platforms. It is the thin shell where those pieces are
+named, mounted, served, and handed off.
 
 ## Install
 
@@ -18,13 +28,13 @@ prepares an application-facing environment around them.
 python -m pip install aaax
 ```
 
-For local composition with the PSI stack:
+For local PSI composition:
 
 ```bash
 python -m pip install "aaax[integrations]" lllm-core sssn psihub
 ```
 
-## Load A PsiHub Package
+## Mount A PsiHub Package
 
 If a folder contains `psi.toml`, AAAX can serve it directly:
 
@@ -32,16 +42,16 @@ If a folder contains `psi.toml`, AAAX can serve it directly:
 aaax serve packages/analyst-pack --port 8400
 ```
 
-AAAX reads the manifest and imports these resource types into one strategy:
+AAAX reads the manifest and mounts:
 
-- package metadata and package card hints
-- schemas, tactics, services, runs, and config
-- SSSN channels and snapshots
-- docs, examples, and assets
+- package metadata and card hints;
+- schemas, tactics, services, runs, and config;
+- SSSN channels and snapshots;
+- docs, examples, and assets.
 
-Tactics with Python entrypoints are bound to `/tactics/{name}/run`. Channels are
-backed by a local SSSN store and exposed through `/channels/{name}/events`.
-Services that point at one tactic are also invokable as resources.
+Python tactic entrypoints become `/tactics/{name}/run`. Channels are backed by a
+local SSSN store and exposed through `/channels/{name}/events`. Services that
+point at one tactic are invokable as resources.
 
 ```bash
 curl -X POST http://127.0.0.1:8400/tactics/finance_baseline/run \
@@ -59,63 +69,39 @@ curl -X POST http://127.0.0.1:8400/channels/events/events \
 curl http://127.0.0.1:8400/channels/events/events?limit=10
 ```
 
-## Define A Strategy
+## Write A Shell Script
+
+For larger systems, write a `strategy.py`. A strategy is the shell script: it
+mounts packages, assigns local names, and optionally defines `/run`.
 
 ```python
 from aaax import Strategy
 
 
 def build_strategy() -> Strategy:
-    strategy = Strategy(
-        "analyst-system",
-        description="Combine source channels and analyst tactics.",
+    shell = Strategy(
+        "analyst-shell",
+        description="Mount source channels and analyst tactics.",
     )
-    strategy.channel(
-        "events",
-        ref="psi://society/source-channels/channels/finance_ticks",
-        description="Incoming source records.",
-    )
-    strategy.tactic(
-        "finance_baseline",
-        ref="psi://society/analyst-tactics/tactics/finance_baseline",
-        description="Deterministic analyst tactic.",
-    )
+    shell.use_package("packages/source-channels", prefix="sources")
+    shell.use_package("packages/analyst-tactics", prefix="analysts")
 
-    @strategy.runner
+    @shell.runner
     def run(input_value, *, context=None):
         return {
-            "strategy": "analyst-system",
             "input": input_value,
-            "resources": [resource.ref for resource in strategy.resources],
+            "resources": [resource.ref for resource in shell.resources],
+            "context": context or {},
         }
 
-    return strategy
+    return shell
 ```
-
-You can also compose package resources into a custom strategy:
-
-```python
-from aaax import Strategy
-
-
-strategy = Strategy("analysis-workbench")
-strategy.use_package("packages/source-channels", prefix="sources")
-strategy.use_package("packages/analyst-tactics", prefix="analysts")
-```
-
-## Serve It
 
 ```bash
 aaax serve strategy.py --port 8400
 ```
 
-Then call the strategy:
-
-```bash
-curl -X POST http://127.0.0.1:8400/run \
-  -H 'content-type: application/json' \
-  -d '{"input": {"task": "summarize"}}'
-```
+## Surface
 
 Useful endpoints:
 

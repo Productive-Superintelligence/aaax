@@ -1,5 +1,5 @@
 site_name: AAAX
-site_description: Strategy and launch boundary for PSI application packages.
+site_description: Shell for inspecting, mounting, and serving PSI application packages.
 site_url: https://aaax.one/
 repo_name: Productive-Superintelligence/aaax
 repo_url: https://github.com/Productive-Superintelligence/aaax
@@ -37,15 +37,15 @@ nav:
       - Concepts:
           - Strategies: concepts/strategies.md
           - Package Composition: concepts/package-composition.md
-          - Launch Boundary: concepts/launch-boundary.md
+          - Shell Boundary: concepts/launch-boundary.md
   - Composition:
       - Composition: composition/index.md
       - Strategy Resources: composition/strategy-resources.md
       - PsiHub Packages: composition/psihub-packages.md
       - Channels And Services: composition/channels-services.md
-  - Launch:
-      - Launch: launch/index.md
-      - FastAPI Surface: launch/fastapi-surface.md
+  - Shell:
+      - Shell: launch/index.md
+      - Service Surface: launch/fastapi-surface.md
       - Agent Handoff: launch/agent-handoff.md
   - Tutorials:
       - Package Level:

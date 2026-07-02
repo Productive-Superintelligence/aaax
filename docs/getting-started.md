@@ -1,8 +1,9 @@
 # Getting Started
 
-AAAX can start from either a package manifest or a strategy file. Use a package
-folder when one package already describes the application. Use a strategy file
-when you want to compose several packages or add a custom top-level runner.
+AAAX starts like a shell: point it at something package-shaped, inspect what it
+can mount, then serve the command surface. Use a package folder when one package
+already describes the system. Use a strategy file when you want a shell script
+that mounts several packages or adds a top-level `/run` command.
 
 ## Install
 
@@ -16,7 +17,7 @@ For package and channel binding, install the PSI stack integration packages:
 python -m pip install "aaax[integrations]" lllm-core sssn psihub
 ```
 
-## Serve A Package
+## Mount And Serve A Package
 
 Create a minimal package:
 
@@ -64,9 +65,10 @@ def echo(input_value, *, context=None):
     return {"echo": input_value, "metadata": metadata}
 ```
 
-Serve it:
+Enter the shell:
 
 ```bash
+aaax inspect analyst-pack
 aaax serve analyst-pack --port 8400
 ```
 
@@ -78,7 +80,7 @@ curl -X POST http://127.0.0.1:8400/tactics/echo/run \
   -d '{"input": {"text": "hello"}, "context": {"request": "quickstart"}}'
 ```
 
-## Compose Packages
+## Write A Shell Script
 
 When one package is not enough, use a strategy file:
 
@@ -87,30 +89,30 @@ from aaax import Strategy
 
 
 def build_strategy() -> Strategy:
-    strategy = Strategy(
-        "analysis-workbench",
-        description="Combine source channels and analyst tactics.",
+    shell = Strategy(
+        "analysis-shell",
+        description="Mount source channels and analyst tactics.",
     )
-    strategy.use_package("packages/source-channels", prefix="sources")
-    strategy.use_package("packages/analyst-tactics", prefix="analysts")
+    shell.use_package("packages/source-channels", prefix="sources")
+    shell.use_package("packages/analyst-tactics", prefix="analysts")
 
-    @strategy.runner
+    @shell.runner
     def run(input_value, *, context=None):
         return {
             "input": input_value,
-            "resources": [resource.ref for resource in strategy.resources],
+            "resources": [resource.ref for resource in shell.resources],
             "context": context or {},
         }
 
-    return strategy
+    return shell
 ```
 
 ```bash
 aaax serve strategy.py --port 8400
 ```
 
-The prefixes keep local resource names distinct while preserving original
-`psi://` refs in metadata.
+Prefixes keep mounted names distinct while preserving original `psi://` refs in
+metadata.
 
 ## Inspect Before Serving
 
@@ -119,6 +121,6 @@ aaax inspect analyst-pack
 aaax inspect strategy.py --json
 ```
 
-Inspection is useful when a package imports many resources. It shows the names
-that will appear under `/resources/{name}/invoke`, `/tactics/{name}/run`, and
+Inspection is the shell habit: check the local names before you run anything.
+Those names become `/resources/{name}/invoke`, `/tactics/{name}/run`, and
 `/channels/{name}/events`.

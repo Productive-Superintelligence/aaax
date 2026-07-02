@@ -1,6 +1,7 @@
 # CLI
 
-The `aaax` command loads, inspects, and serves strategies.
+The `aaax` command is the shell entrypoint. It loads, inspects, and serves
+packages or strategy files.
 
 ## Inspect
 
@@ -40,5 +41,5 @@ Validation:
 aaax launch TARGET --port 8400
 ```
 
-`launch` is an alias for `serve` in the current public surface. It exists so
-future launch-specific behavior can keep the same command family.
+`launch` is an alias for `serve` in the current public surface. It exists so the
+command family can grow without changing the shell habit: inspect, mount, serve.

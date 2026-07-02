@@ -1,6 +1,6 @@
 # Channel Events
 
-Package channels become SSSN-backed local endpoints when packages are bound.
+Package channels become SSSN-backed local endpoints when packages are mounted.
 
 ## 1. Add A Channel
 
@@ -11,10 +11,10 @@ description = "Application event stream."
 ```
 
 AAAX creates the channel in the package `.sssn` store by default. You can pass a
-custom store path when composing:
+custom store path when mounting:
 
 ```python
-strategy.use_package("packages/source-pack", store=".aaax/source-store")
+shell.use_package("packages/source-pack", store=".aaax/source-store")
 ```
 
 ## 2. Append An Event
@@ -46,7 +46,7 @@ Filter by kind:
 curl 'http://127.0.0.1:8400/channels/events/events?kind=record&limit=10'
 ```
 
-## 4. Use Generic Invocation
+## 4. Use The Shell Escape Hatch
 
 ```bash
 curl -X POST http://127.0.0.1:8400/resources/events/invoke \
@@ -54,5 +54,5 @@ curl -X POST http://127.0.0.1:8400/resources/events/invoke \
   -d '{"input": {"op": "query", "limit": 10}}'
 ```
 
-The generic path is handy for clients that do not want resource-kind-specific
-routes.
+The generic path is the shell escape hatch for clients that do not want
+resource-kind-specific routes.

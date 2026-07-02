@@ -1,15 +1,15 @@
-# Launch Boundary
+# Shell Boundary
 
-AAAX is the boundary between package metadata and a usable application surface.
-It prepares the environment a caller needs, but it does not try to become the
+AAAX is the shell between package metadata and a usable command surface. It
+prepares the environment a caller needs, but it does not try to become the
 caller.
 
-## What Launch Means Here
+## What The Shell Does
 
-In the current surface, launch means:
+In the current surface, the shell does five things:
 
 - Load a strategy file or package manifest.
-- Resolve the resources that belong to the application.
+- List and name the resources that belong to the application.
 - Bind local handlers where the package provides local Python entrypoints.
 - Prepare channel storage for package channels.
 - Expose a FastAPI app with stable endpoints.
@@ -30,8 +30,8 @@ AAAX does not own:
 - long-term event retention.
 
 Those jobs belong to LLLM runtimes, SSSN stores, PsiHub, deployment platforms,
-and agent tools. AAAX keeps the composition boundary boring enough that all of
-those systems can meet there.
+and agent tools. AAAX keeps the shell boring enough that all of those systems
+can meet there.
 
 ## Handoff Shape
 
