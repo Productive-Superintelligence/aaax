@@ -1,6 +1,7 @@
-# AAAX
+# AAAX Agentic Application Shell
 
-AAAX is the PSI shell for package-shaped agent systems.
+AAAX Agentic Application Shell is the PSI shell for package-shaped agent
+systems.
 
 Use it to inspect a PsiHub package, mount its tactics and channels, bind local
 handlers, open a small FastAPI surface, and hand that surface to a human,
