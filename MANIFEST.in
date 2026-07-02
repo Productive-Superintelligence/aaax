@@ -1,0 +1,10 @@
+include LICENSE
+include README.md
+include mkdocs.yml
+recursive-include docs *
+prune build
+prune dist
+prune site
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store

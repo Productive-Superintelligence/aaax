@@ -28,6 +28,12 @@ named, mounted, served, and handed off.
 python -m pip install aaax
 ```
 
+For a reproducible install:
+
+```bash
+python -m pip install aaax==0.2.1
+```
+
 For local PSI composition:
 
 ```bash
