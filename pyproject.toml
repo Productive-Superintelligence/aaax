@@ -45,11 +45,19 @@ integrations = [
   "psihub>=0.0.1",
   "sssn>=0.1.0",
 ]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "pymdown-extensions>=10.8",
+]
 dev = [
   "build>=1.2",
   "httpx>=0.27",
   "lllm-core>=0.2.0",
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
   "psihub>=0.0.1",
+  "pymdown-extensions>=10.8",
   "pytest>=8.0",
   "sssn>=0.1.0",
   "twine>=5.1",

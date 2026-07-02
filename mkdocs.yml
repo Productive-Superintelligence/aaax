@@ -1,0 +1,87 @@
+site_name: AAAX
+site_description: Strategy and launch boundary for PSI application packages.
+site_url: https://aaax.one/
+repo_name: Productive-Superintelligence/aaax
+repo_url: https://github.com/Productive-Superintelligence/aaax
+edit_uri: edit/main/docs/
+copyright: '<a class="psi-footer-brand" href="https://aaax.one/"><span class="psi-footer-wordmark" aria-hidden="true"></span><span class="psi-footer-text">AAAX</span></a>'
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  logo: assets/aaax-logo-black.png
+  favicon: assets/aaax-logo-black.png
+  font:
+    text: Roboto
+    code: Roboto Mono
+  palette:
+    - scheme: default
+      primary: white
+      accent: black
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.instant
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - content.code.copy
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+
+nav:
+  - Overview:
+      - Overview: index.md
+      - Getting Started: getting-started.md
+      - Concepts:
+          - Strategies: concepts/strategies.md
+          - Package Composition: concepts/package-composition.md
+          - Launch Boundary: concepts/launch-boundary.md
+  - Composition:
+      - Composition: composition/index.md
+      - Strategy Resources: composition/strategy-resources.md
+      - PsiHub Packages: composition/psihub-packages.md
+      - Channels And Services: composition/channels-services.md
+  - Launch:
+      - Launch: launch/index.md
+      - FastAPI Surface: launch/fastapi-surface.md
+      - Agent Handoff: launch/agent-handoff.md
+  - Tutorials:
+      - Package Level:
+          - Serve A Package: tutorials/serve-package.md
+          - Compose Packages: tutorials/compose-packages.md
+      - Service Workflows:
+          - Channel Events: tutorials/channel-events.md
+          - Tactic Endpoint: tutorials/tactic-endpoint.md
+  - Reference:
+      - Python API: reference/python-api.md
+      - CLI: reference/cli.md
+      - HTTP API: reference/http-api.md
+
+extra:
+  generator: false
+  homepage: https://aaax.one/
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Productive-Superintelligence/aaax
+
+extra_css:
+  - stylesheets/custom.20260629.css
+
+extra_javascript:
+  - javascripts/vendor/mermaid.min.js
+  - javascripts/mermaid-init.20260629.js
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
+  - pymdownx.tabbed:
+      alternate_style: true
