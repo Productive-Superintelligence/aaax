@@ -1,10 +1,10 @@
-site_name: Advanced Autonomous Agent Executor (AAAX)
+site_name: AAAX
 site_description: PSI shell for inspecting, mounting, and serving package-shaped agent systems.
 site_url: https://aaax.one/
 repo_name: Productive-Superintelligence/aaax
 repo_url: https://github.com/Productive-Superintelligence/aaax
 edit_uri: edit/main/docs/
-copyright: '<a class="psi-footer-brand" href="https://aaax.one/"><span class="psi-footer-wordmark" aria-hidden="true"></span><span class="psi-footer-text">Advanced Autonomous Agent Executor (AAAX)</span></a>'
+copyright: '<a class="psi-footer-brand" href="https://aaax.one/"><span class="psi-footer-wordmark" aria-hidden="true"></span><span class="psi-footer-text">AAAX</span></a>'
 
 theme:
   name: material
@@ -69,13 +69,13 @@ extra:
       title: Psi
       url: https://prosi.io/docs/
     - key: lllm
-      title: LLLM · Low-Level Language Models
+      title: LLLM
       url: https://lllm.one/
     - key: sssn
-      title: SSSN · Simple System of Systems Network
+      title: SSSN
       url: https://sssn.one/
     - key: aaax
-      title: AAAX · Advanced Autonomous Agent Executor
+      title: AAAX
       url: https://aaax.one/
   social:
     - icon: fontawesome/brands/github
