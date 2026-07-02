@@ -1,6 +1,6 @@
-# Composition
+# Strategy
 
-Composition is the main reason AAAX exists. LLLM owns tactic boundaries, SSSN
+Strategy is the main reason AAAX exists. LLLM owns tactic boundaries, SSSN
 owns channels and stores, and PsiHub owns package manifests. AAAX gathers those
 resources into one shell and exposes them as one command surface.
 
@@ -31,7 +31,7 @@ AAAX understands the package-facing resource kinds used by the PSI stack:
 The built-in package bridge imports all of the PsiHub manifest sections that
 matter for launch context, not only executable tactics.
 
-## Composition Rules
+## Strategy Rules
 
 - Local names must be path-segment friendly.
 - Prefix imported packages when names might collide.

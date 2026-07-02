@@ -38,8 +38,8 @@ nav:
           - Strategies: concepts/strategies.md
           - Package Composition: concepts/package-composition.md
           - Shell Boundary: concepts/launch-boundary.md
-  - Composition:
-      - Composition: composition/index.md
+  - Strategy:
+      - Strategy: composition/index.md
       - Strategy Resources: composition/strategy-resources.md
       - PsiHub Packages: composition/psihub-packages.md
       - Channels And Services: composition/channels-services.md

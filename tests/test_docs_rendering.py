@@ -61,7 +61,7 @@ def test_docs_build_with_shared_visual_contract(tmp_path: Path):
     assert "AAAX" in index
     assert "psi-header-nav" in index
     assert "Overview" in index
-    assert "Composition" in index
+    assert "Strategy" in index
     assert "Shell" in index
     assert "aaax-shell" in index
     assert "Tutorials" in index
