@@ -71,7 +71,7 @@ def test_docs_build_with_shared_visual_contract(tmp_path: Path):
     assert "aaax-logo-text-black.png" in css
     assert "aaax-logo-text-white.png" in css
     assert "background-color: #ffffff" in css
-    assert "Roboto Mono" in css
+    assert "Space Mono" in css
 
 
 def test_docs_render_mermaid_as_local_diagram_containers(tmp_path: Path):
