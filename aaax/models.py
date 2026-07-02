@@ -15,6 +15,9 @@ ResourceKind = Literal[
     "package",
     "run",
     "config",
+    "doc",
+    "example",
+    "snapshot",
     "asset",
     "custom",
 ]

@@ -33,6 +33,64 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
     async def resources() -> list[dict[str, Any]]:
         return jsonable_encoder(strategy.resources)
 
+    @app.get("/packages")
+    async def packages() -> list[dict[str, Any]]:
+        return [
+            jsonable_encoder(resource)
+            for resource in strategy.resources
+            if resource.kind == "package"
+        ]
+
+    @app.get("/tactics")
+    async def tactics() -> list[dict[str, Any]]:
+        return [
+            jsonable_encoder(resource)
+            for resource in strategy.resources
+            if resource.kind == "tactic"
+        ]
+
+    @app.post("/tactics/{name}/run", response_model=StrategyRunResponse)
+    async def run_tactic(name: str, request: StrategyRunRequest) -> StrategyRunResponse:
+        return await _invoke(strategy, name, request, endpoint="tactic")
+
+    @app.get("/channels")
+    async def channels() -> list[dict[str, Any]]:
+        return [
+            jsonable_encoder(resource)
+            for resource in strategy.resources
+            if resource.kind == "channel"
+        ]
+
+    @app.get("/channels/{name}/events")
+    async def query_channel(
+        name: str,
+        after_cursor: int = 0,
+        limit: int = 100,
+        kind: str | None = None,
+    ) -> dict[str, Any]:
+        request = StrategyRunRequest(
+            input={
+                "op": "query",
+                "after_cursor": after_cursor,
+                "limit": limit,
+                "kind": kind,
+            }
+        )
+        response = await _invoke(strategy, name, request, endpoint="channel")
+        return response.model_dump()
+
+    @app.post("/channels/{name}/events", response_model=StrategyRunResponse)
+    async def append_channel_event(
+        name: str,
+        request: StrategyRunRequest,
+    ) -> StrategyRunResponse:
+        input_value = request.input if isinstance(request.input, dict) else {}
+        request = StrategyRunRequest(
+            input={**input_value, "op": "append"},
+            context=request.context,
+        )
+        return await _invoke(strategy, name, request, endpoint="channel")
+
     @app.post("/run", response_model=StrategyRunResponse)
     async def run(request: StrategyRunRequest) -> StrategyRunResponse:
         output = await strategy.arun(request.input, context=request.context)
@@ -46,18 +104,30 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         name: str,
         request: StrategyRunRequest,
     ) -> StrategyRunResponse:
-        try:
-            output = await strategy.invoke_resource(
-                name,
-                request.input,
-                context=request.context,
-            )
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return StrategyRunResponse(
-            output=jsonable_encoder(output),
-            strategy=strategy.name,
-            metadata={"resource": name},
-        )
+        return await _invoke(strategy, name, request, endpoint="resource")
 
     return app
+
+
+async def _invoke(
+    strategy: Strategy,
+    name: str,
+    request: StrategyRunRequest,
+    *,
+    endpoint: str,
+) -> StrategyRunResponse:
+    try:
+        output = await strategy.invoke_resource(
+            name,
+            request.input,
+            context=request.context,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return StrategyRunResponse(
+        output=jsonable_encoder(output),
+        strategy=strategy.name,
+        metadata={"resource": name, "endpoint": endpoint},
+    )

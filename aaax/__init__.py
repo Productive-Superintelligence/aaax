@@ -9,6 +9,7 @@ from .models import (
 )
 from .server import create_strategy_app
 from .strategy import Strategy
+from .packages import add_package, strategy_from_package
 
 __version__ = "0.2.0a0"
 
@@ -19,6 +20,8 @@ __all__ = [
     "StrategyRunRequest",
     "StrategyRunResponse",
     "__version__",
+    "add_package",
     "create_strategy_app",
     "load_strategy",
+    "strategy_from_package",
 ]

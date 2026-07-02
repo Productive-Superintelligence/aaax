@@ -48,7 +48,10 @@ integrations = [
 dev = [
   "build>=1.2",
   "httpx>=0.27",
+  "lllm-core>=0.2.0",
+  "psihub>=0.0.1",
   "pytest>=8.0",
+  "sssn>=0.1.0",
   "twine>=5.1",
 ]
 

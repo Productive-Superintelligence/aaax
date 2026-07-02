@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from .packages import strategy_from_package
 from .strategy import Strategy
 
 
@@ -23,8 +24,12 @@ def load_strategy(target: str | Path) -> Strategy:
             candidate = path / name
             if candidate.is_file():
                 return _load_file(candidate)
+        if (path / "psi.toml").is_file():
+            return strategy_from_package(path)
         raise ValueError("strategy directory must contain strategy.py or aaax.py")
     if path.is_file():
+        if path.name == "psi.toml":
+            return strategy_from_package(path)
         return _load_file(path)
     if ":" in text:
         module_name, _, attr = text.partition(":")

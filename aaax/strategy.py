@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 from .models import ResourceKind, StrategyInfo, StrategyResource
@@ -97,6 +98,23 @@ class Strategy:
 
     def package(self, name: str, **kwargs: Any) -> "Strategy":
         return self.resource("package", name, **kwargs)
+
+    def snapshot(self, name: str, **kwargs: Any) -> "Strategy":
+        return self.resource("snapshot", name, **kwargs)
+
+    def use_package(
+        self,
+        path: str | Path,
+        *,
+        prefix: str | None = None,
+        store: str | Path | None = None,
+        bind: bool = True,
+    ) -> "Strategy":
+        """Import resources from a PsiHub package manifest."""
+
+        from .packages import add_package
+
+        return add_package(self, path, prefix=prefix, store=store, bind=bind)
 
     async def arun(
         self,
