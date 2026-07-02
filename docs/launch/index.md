@@ -1,44 +1,28 @@
 # Shell
 
-The shell is the callable half of AAAX. After a package or strategy is loaded
-and resources are mounted, AAAX exposes a FastAPI app that can be called by
-scripts, humans, local tools, and future agent workflows.
+Shell is the callable half of AAAX. After a package or strategy is loaded and
+resources are mounted, AAAX exposes the same strategy through surfaces for
+humans, applications, and coding agents.
 
 ```mermaid
 flowchart LR
-  A["aaax serve"] --> B["load shell"]
-  B --> C["mount and bind resources"]
-  C --> D["FastAPI app"]
-  D --> E["/run"]
-  D --> F["/tactics/{name}/run"]
-  D --> G["/channels/{name}/events"]
-  D --> H["/resources/{name}/invoke"]
+  A["Strategy"] --> B["Mounted resources"]
+  B --> C["CLI shell"]
+  B --> D["FastAPI shell"]
+  B --> E["Agentic shell"]
+  C --> F["human inspect and serve"]
+  D --> G["apps and services"]
+  E --> H["Codex / Claude Code"]
 ```
 
-## CLI Shell
+## Shell Surfaces
 
-```bash
-aaax serve strategy.py --host 127.0.0.1 --port 8400
-aaax serve packages/analyst-pack --port 8400
-```
-
-`launch` is currently an alias for `serve`:
-
-```bash
-aaax launch packages/analyst-pack --port 8400
-```
-
-## In-Process Shell
-
-```python
-from aaax import create_strategy_app, load_strategy
-
-
-shell = load_strategy("packages/analyst-pack")
-app = create_strategy_app(shell)
-```
-
-Then run it with Uvicorn, Hypercorn, or your deployment server.
+- [CLI Shell](cli-shell.md): a human-facing command surface for inspecting,
+  mounting, and serving packages.
+- [FastAPI Shell](fastapi-surface.md): an application-facing HTTP surface for
+  `/run`, tactics, channels, packages, and resource invocation.
+- [Agentic Shell](agent-handoff.md): an agent-facing context surface for Codex,
+  Claude Code, IDE agents, and other coding-agent workflows.
 
 ## Operational Boundary
 

@@ -45,8 +45,9 @@ nav:
       - Channels And Services: composition/channels-services.md
   - Shell:
       - Shell: launch/index.md
-      - Service Surface: launch/fastapi-surface.md
-      - Agent Handoff: launch/agent-handoff.md
+      - CLI Shell: launch/cli-shell.md
+      - FastAPI Shell: launch/fastapi-surface.md
+      - Agentic Shell: launch/agent-handoff.md
   - Tutorials:
       - Package Level:
           - Serve A Package: tutorials/serve-package.md

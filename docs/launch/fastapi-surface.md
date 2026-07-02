@@ -1,4 +1,4 @@
-# Service Surface
+# FastAPI Shell
 
 `create_strategy_app(strategy)` exposes the shell as a FastAPI application.
 Responses use a simple envelope:

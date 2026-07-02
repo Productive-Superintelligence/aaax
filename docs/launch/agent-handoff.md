@@ -1,4 +1,4 @@
-# Agent Handoff
+# Agentic Shell
 
 AAAX is not an agent runtime, but it is designed so an agent can receive useful
 shell context without guessing.
