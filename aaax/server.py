@@ -17,7 +17,7 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
     app = FastAPI(
         title=strategy.name,
         description=strategy.description,
-        version="0.2.0a0",
+        version="0.2.0",
     )
     app.state.aaax_strategy = strategy
 
