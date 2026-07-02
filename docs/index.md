@@ -1,4 +1,4 @@
-# AAAX Agentic Application Shell
+# Advanced Autonomous Agent Executor (AAAX)
 
 <p class="psi-brand">
   <img src="assets/aaax-logo-text-black.png#only-light" alt="AAAX" />
@@ -7,10 +7,10 @@
 
 [aaax.one](https://aaax.one){ .psi-domain }
 
-AAAX Agentic Application Shell is the PSI shell for package-shaped agent
-systems. It gives packages a place to become useful: inspect a manifest, mount
-its tactics and channels, bind local handlers, open a FastAPI surface, and hand
-the resulting environment to a human, script, or coding agent.
+Advanced Autonomous Agent Executor (AAAX) is the PSI shell for package-shaped
+agent systems. It gives packages a place to become useful: inspect a manifest,
+mount its tactics and channels, bind local handlers, open a FastAPI surface, and
+hand the resulting environment to a human, script, or coding agent.
 
 <div class="aaax-shell" aria-label="AAAX shell transcript">
   <span><span class="aaax-shell__prompt">$</span> aaax inspect packages/analyst-pack</span>

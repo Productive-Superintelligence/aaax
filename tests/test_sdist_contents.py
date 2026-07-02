@@ -45,7 +45,7 @@ def test_sdist_includes_docs_and_tutorials(tmp_path: Path):
         "docs/launch/index.md",
         "docs/overrides/partials/header.html",
         "docs/reference/cli.md",
-        "docs/stylesheets/custom.20260629.css",
+        "docs/stylesheets/custom.20260702.css",
         "docs/tutorials/channel-events.md",
         "docs/tutorials/compose-packages.md",
         "docs/tutorials/serve-package.md",

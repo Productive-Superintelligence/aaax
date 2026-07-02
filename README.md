@@ -1,7 +1,7 @@
-# AAAX Agentic Application Shell
+# Advanced Autonomous Agent Executor (AAAX)
 
-AAAX Agentic Application Shell is the PSI shell for package-shaped agent
-systems.
+Advanced Autonomous Agent Executor (AAAX) is the PSI shell for package-shaped
+agent systems.
 
 Use it to inspect a PsiHub package, mount its tactics and channels, bind local
 handlers, open a small FastAPI surface, and hand that surface to a human,

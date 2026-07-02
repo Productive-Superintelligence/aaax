@@ -55,7 +55,7 @@ def test_docs_build_with_shared_visual_contract(tmp_path: Path):
     site_dir = build_docs(tmp_path)
     index = (site_dir / "index.html").read_text(encoding="utf-8")
     css = (
-        site_dir / "stylesheets" / "custom.20260629.css"
+        site_dir / "stylesheets" / "custom.20260702.css"
     ).read_text(encoding="utf-8")
 
     assert "AAAX" in index

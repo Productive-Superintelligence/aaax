@@ -1,10 +1,10 @@
-site_name: AAAX Agentic Application Shell
+site_name: Advanced Autonomous Agent Executor (AAAX)
 site_description: PSI shell for inspecting, mounting, and serving package-shaped agent systems.
 site_url: https://aaax.one/
 repo_name: Productive-Superintelligence/aaax
 repo_url: https://github.com/Productive-Superintelligence/aaax
 edit_uri: edit/main/docs/
-copyright: '<a class="psi-footer-brand" href="https://aaax.one/"><span class="psi-footer-wordmark" aria-hidden="true"></span><span class="psi-footer-text">AAAX Agentic Application Shell</span></a>'
+copyright: '<a class="psi-footer-brand" href="https://aaax.one/"><span class="psi-footer-wordmark" aria-hidden="true"></span><span class="psi-footer-text">Advanced Autonomous Agent Executor (AAAX)</span></a>'
 
 theme:
   name: material
@@ -65,27 +65,24 @@ extra:
   homepage: https://aaax.one/
   current_doc: aaax
   docs_switch:
+    - key: psi
+      title: Psi
+      url: https://prosi.io/docs/
     - key: lllm
-      title: LLLM Tactic Framework
+      title: LLLM · Low-Level Language Models
       url: https://lllm.one/
     - key: sssn
-      title: SSSN Semantic Channel Network
+      title: SSSN · Simple System of Systems Network
       url: https://sssn.one/
     - key: aaax
-      title: AAAX Agentic Application Shell
+      title: AAAX · Advanced Autonomous Agent Executor
       url: https://aaax.one/
-    - key: psihub
-      title: PsiHub
-      url: https://prosi.io/docs/hub/
-    - key: psicli
-      title: PsiCLI
-      url: https://prosi.io/docs/cli/
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/Productive-Superintelligence/aaax
 
 extra_css:
-  - stylesheets/custom.20260629.css
+  - stylesheets/custom.20260702.css
 
 extra_javascript:
   - javascripts/vendor/mermaid.min.js
