@@ -10,7 +10,8 @@
 Advanced Autonomous Agent Executor (AAAX) is the PSI shell for package-shaped
 agent systems. It gives packages a place to become useful: inspect a manifest,
 mount its tactics and channels, bind local handlers, open a FastAPI surface, and
-hand the resulting environment to a human, script, or coding agent.
+hand the resulting environment to a human, script, coding agent, or another
+system.
 
 <div class="aaax-shell" aria-label="AAAX shell transcript">
   <span><span class="aaax-shell__prompt">$</span> aaax inspect packages/analyst-pack</span>
@@ -24,6 +25,10 @@ AAAX stays thin on purpose. LLLM owns tactic execution, SSSN owns semantic
 channels, PsiHub owns package protocol and storage, and agent tools own their
 reasoning loops. AAAX is the shell where those resources get named, mounted,
 served, and passed along.
+
+AAAX also works independently. A `Strategy` can be a Pydantic-modeled resource
+table with local handlers and a FastAPI app. Add LLLM, SSSN, and PsiHub only
+when you want their tactic, channel, or package layers.
 
 <div class="psi-tiles">
   <div class="psi-tile">
@@ -77,20 +82,22 @@ flowchart LR
   A["PsiHub package"] --> B["AAAX shell"]
   C["strategy.py"] --> B
   B --> D["resource table"]
-  B --> E["FastAPI surface"]
+  B --> E["Pydantic/FastAPI surface"]
   E --> F["LLLM tactics"]
   E --> G["SSSN channels"]
-  D --> H["human or agent handoff"]
+  D --> H["human, agent, or system handoff"]
 ```
 
 AAAX treats a package like something you mount into a shell session. The local
 name can change, but the package ref remains stable. A caller can list what is
 mounted, run one tactic, append an event, invoke a service, or call the shell's
-top-level `/run` command.
+top-level `/run` command. That caller can be a person, an app, an agent, or the
+next system in a larger loop.
 
 ## What AAAX Owns
 
 - `Strategy`, `StrategyResource`, and the shell's mounted resource table.
+- Pydantic request, response, resource, and strategy description models.
 - Loading `strategy.py`, `aaax.py`, `module:factory`, package folders, and
   direct `psi.toml` files.
 - Mounting PsiHub package resources into one local namespace.

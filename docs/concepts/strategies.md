@@ -4,6 +4,10 @@ A `Strategy` is an AAAX shell session. It is a mounted resource table plus an
 optional top-level command. The table describes resources; handlers make selected
 resources executable.
 
+Because the table and call envelopes are Pydantic models, a strategy can be used
+independently of LLLM, SSSN, and PsiHub. Those integrations add tactic, channel,
+and package bindings when you want them; they are not required for every shell.
+
 ```python
 from aaax import Strategy
 

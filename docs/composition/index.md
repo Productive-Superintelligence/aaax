@@ -1,14 +1,16 @@
 # Strategy
 
-Strategy is the main reason AAAX exists. LLLM owns tactic boundaries, SSSN
-owns channels and stores, and PsiHub owns package manifests. AAAX gathers those
-resources into one shell and exposes them as one command surface.
+Strategy is the main reason AAAX exists. A strategy can stand alone as a
+Pydantic-modeled resource table with local handlers. When you want more of the
+PSI stack, LLLM owns tactic boundaries, SSSN owns channels and stores, and
+PsiHub owns package manifests. AAAX gathers those resources into one shell and
+exposes them as one command surface.
 
 <div class="psi-flow">
   <div><strong>Describe</strong><br />Write `psi.toml` resources.</div>
   <div><strong>Mount</strong><br />Load the package into a shell.</div>
   <div><strong>Bind</strong><br />Attach local tactic and channel handlers.</div>
-  <div><strong>Serve</strong><br />Expose the shell as FastAPI.</div>
+  <div><strong>Serve</strong><br />Expose the shell as Pydantic/FastAPI.</div>
 </div>
 
 ## Resource Kinds

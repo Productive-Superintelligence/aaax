@@ -2,7 +2,7 @@
 
 Shell is the callable half of AAAX. After a package or strategy is loaded and
 resources are mounted, AAAX exposes the same strategy through surfaces for
-humans, applications, and coding agents.
+humans, applications, coding agents, and other systems.
 
 ```mermaid
 flowchart LR
@@ -12,7 +12,7 @@ flowchart LR
   B --> E["Agentic shell"]
   C --> F["human inspect and serve"]
   D --> G["apps and services"]
-  E --> H["Codex / Claude Code"]
+  E --> H["agents or next systems"]
 ```
 
 ## Shell Surfaces
@@ -20,7 +20,8 @@ flowchart LR
 - [CLI Shell](cli-shell.md): a human-facing command surface for inspecting,
   mounting, and serving packages.
 - [FastAPI Shell](fastapi-surface.md): an application-facing HTTP surface for
-  `/run`, tactics, channels, packages, and resource invocation.
+  `/run`, tactics, channels, packages, resource invocation, and other systems
+  that need to connect.
 - [Agentic Shell](agent-handoff.md): an agent-facing context surface for Codex,
   Claude Code, IDE agents, and other coding-agent workflows.
 

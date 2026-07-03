@@ -5,8 +5,12 @@ agent systems.
 
 Use it to inspect a PsiHub package, mount its tactics and channels, bind local
 handlers, open a small FastAPI surface, and hand that surface to a human,
-script, or coding agent. The feel is intentionally shell-like: name the package,
-see the resources, run one command, and get a callable system.
+script, coding agent, or another system. The feel is intentionally shell-like:
+name the package, see the resources, run one command, and get a callable system.
+
+AAAX can also stand alone. A `Strategy` can be just a Pydantic-modeled resource
+table plus local handlers exposed through FastAPI. LLLM, SSSN, and PsiHub are
+optional bridges when you want tactic, channel, and package behavior.
 
 ```bash
 $ aaax inspect packages/analyst-pack

@@ -1,7 +1,9 @@
 # FastAPI Shell
 
 `create_strategy_app(strategy)` exposes the shell as a FastAPI application.
-Responses use a simple envelope:
+Requests and responses use Pydantic models, so the same shell can be called by
+an app, a local script, an agent, or another system in the loop. Responses use a
+simple envelope:
 
 ```json
 {

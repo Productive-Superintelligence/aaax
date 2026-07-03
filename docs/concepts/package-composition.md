@@ -4,6 +4,10 @@ AAAX composes packages by mounting manifest resources into a shell. A package
 remains the unit of publication and discovery. A strategy is the shell session
 that chooses local names, binds handlers, and serves endpoints.
 
+Package composition is optional. You can use AAAX with a hand-written strategy,
+with one package, with several packages, or with only the LLLM/SSSN pieces that
+the shell actually needs.
+
 ```mermaid
 flowchart TD
   A["psi.toml"] --> B["PsiHub manifest"]
