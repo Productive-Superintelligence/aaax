@@ -1,5 +1,9 @@
 # Advanced Autonomous Agent Executor (AAAX)
 
+<p align="center">
+  <img src="assets/aaax-logo-text-black.png" alt="AAAX" width="420">
+</p>
+
 Advanced Autonomous Agent Executor (AAAX) is the PSI shell for package-shaped
 agent systems.
 
@@ -36,7 +40,7 @@ python -m pip install aaax
 For a reproducible install:
 
 ```bash
-python -m pip install aaax==0.2.1
+python -m pip install aaax==0.2.2
 ```
 
 For local PSI composition:

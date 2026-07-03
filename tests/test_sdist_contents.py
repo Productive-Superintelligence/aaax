@@ -30,6 +30,8 @@ def test_sdist_includes_docs_and_tutorials(tmp_path: Path):
 
     required = [
         "README.md",
+        "assets/aaax-logo-text-black.png",
+        "assets/aaax-logo-text-white.png",
         "mkdocs.yml",
         "docs/index.md",
         "docs/assets/aaax-logo-text-black.png",
