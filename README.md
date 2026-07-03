@@ -43,10 +43,16 @@ For a reproducible install:
 python -m pip install aaax==0.2.2
 ```
 
-For local PSI composition:
+For manifest inspection and package metadata:
 
 ```bash
-python -m pip install "aaax[integrations]" lllm-core sssn psihub
+python -m pip install "aaax[packages]"
+```
+
+For full PSI composition with optional tactic and channel bridges:
+
+```bash
+python -m pip install "aaax[integrations]"
 ```
 
 ## Mount A PsiHub Package
@@ -64,9 +70,11 @@ AAAX reads the manifest and mounts:
 - SSSN channels and snapshots;
 - docs, examples, and assets.
 
-Python tactic entrypoints become `/tactics/{name}/run`. Channels are backed by a
-local SSSN store and exposed through `/channels/{name}/events`. Services that
-point at one tactic are invokable as resources.
+Python tactic entrypoints become `/tactics/{name}/run`. If LLLM is installed,
+AAAX uses its tactic boundary; otherwise plain Python callables still run
+directly. Channels are backed by a local SSSN store only when channel resources
+exist and the SSSN bridge is installed. Services that point at one tactic are
+invokable as resources.
 
 ```bash
 curl -X POST http://127.0.0.1:8400/tactics/finance_baseline/run \

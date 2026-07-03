@@ -6,7 +6,8 @@ resources executable.
 
 Because the table and call envelopes are Pydantic models, a strategy can be used
 independently of LLLM, SSSN, and PsiHub. Those integrations add tactic, channel,
-and package bindings when you want them; they are not required for every shell.
+and package bindings when you want them; they are optional bridges, not the core
+of AAAX.
 
 ```python
 from aaax import Strategy

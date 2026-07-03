@@ -48,10 +48,13 @@ It supports:
 
 When LLLM is installed, normal callables and `run` methods are wrapped through
 `as_tactic`, so callers meet the same `CallContext` and validation boundary.
+Without LLLM, AAAX calls plain Python tactics directly and passes a normal
+context dictionary when the function accepts `context`.
 
 ## Channel Stores
 
-When a package has channels and `bind=True`, AAAX creates a local SSSN store:
+When a package has channels, `bind=True`, and SSSN is installed, AAAX creates a
+local SSSN store:
 
 ```python
 shell.use_package("packages/source", store=".aaax/source-store")

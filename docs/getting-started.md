@@ -11,10 +11,16 @@ that mounts several packages or adds a top-level `/run` command.
 python -m pip install aaax
 ```
 
-For package and channel binding, install the PSI stack integration packages:
+For package manifest inspection without tactic or channel bridges:
 
 ```bash
-python -m pip install "aaax[integrations]" lllm-core sssn psihub
+python -m pip install "aaax[packages]"
+```
+
+For full PSI composition with optional LLLM tactics and SSSN channels:
+
+```bash
+python -m pip install "aaax[integrations]"
 ```
 
 ## Mount And Serve A Package

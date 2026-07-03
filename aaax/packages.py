@@ -122,7 +122,11 @@ def add_package(
             handler=handler,
         )
 
-    channel_store = _channel_store(manifest, store=store) if bind else None
+    channel_store = (
+        _channel_store(manifest, store=store)
+        if bind and manifest.channels
+        else None
+    )
     for name, resource in manifest.channels.items():
         handler = (
             _channel_handler(channel_store, name)
@@ -296,7 +300,7 @@ def _tactic_handler(entrypoint: str, *, base_dir: Path, name: str) -> Handler:
         if hasattr(tactic, "run") and callable(tactic.run):
             return tactic.run(input_value, context=_call_context(context))
         if callable(tactic):
-            result = tactic(input_value)
+            result = _call_plain_tactic(tactic, input_value, context=context)
             if inspect.isawaitable(result):
                 return await result
             return result
@@ -445,6 +449,53 @@ def _can_call_without_args(value: Any) -> bool:
         }:
             return False
     return True
+
+
+def _call_plain_tactic(
+    tactic: Any,
+    input_value: Any,
+    *,
+    context: Mapping[str, Any] | None,
+) -> Any:
+    signature = _signature(tactic)
+    kwargs: dict[str, Any] = {}
+    if signature is not None and _accepts_context(signature):
+        kwargs["context"] = _call_context(context)
+    if signature is not None and not _can_accept_input(signature):
+        return tactic(**kwargs)
+    return tactic(input_value, **kwargs)
+
+
+def _signature(value: Any) -> inspect.Signature | None:
+    try:
+        return inspect.signature(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _accepts_context(signature: inspect.Signature) -> bool:
+    if "context" in signature.parameters:
+        return True
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
+def _can_accept_input(signature: inspect.Signature) -> bool:
+    for parameter in signature.parameters.values():
+        if parameter.name == "context":
+            continue
+        if parameter.kind in {
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        }:
+            return True
+    return any(
+        parameter.kind is inspect.Parameter.VAR_POSITIONAL
+        for parameter in signature.parameters.values()
+    )
 
 
 def _call_context(context: Mapping[str, Any] | None) -> Any:

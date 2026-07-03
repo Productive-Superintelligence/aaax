@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -163,6 +164,38 @@ def test_strategy_can_compose_prefixed_package_resources(tmp_path: Path):
     assert response.json()["output"]["echo"] == {"text": "prefixed"}
 
 
+def test_tactic_only_package_does_not_require_lllm_or_sssn(
+    tmp_path: Path,
+    monkeypatch,
+):
+    package = _write_tactic_only_package(tmp_path / "standalone-pack")
+    real_import = builtins.__import__
+
+    def blocked_optional_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name.split(".", 1)[0] in {"lllm", "sssn"}:
+            raise ImportError(f"blocked optional integration: {name}")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_optional_import)
+
+    strategy = load_strategy(package)
+    client = TestClient(create_strategy_app(strategy))
+    response = client.post(
+        "/tactics/echo/run",
+        json={
+            "input": {"text": "hello"},
+            "context": {"request": "standalone"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["output"] == {
+        "echo": {"text": "hello"},
+        "context_type": "dict",
+        "metadata": {"request": "standalone"},
+    }
+
+
 def test_cli_inspect_prints_strategy(tmp_path: Path, capsys):
     strategy_file = tmp_path / "strategy.py"
     strategy_file.write_text(
@@ -300,6 +333,47 @@ command = "python examples/first.py"
 [assets.logo]
 path = "assets/logo.txt"
 media_type = "text/plain"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    return root
+
+
+def _write_tactic_only_package(root: Path) -> Path:
+    package_dir = root / "demo_pkg"
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "tactics.py").write_text(
+        """
+def echo(input_value, *, context=None):
+    metadata = getattr(context, "metadata", context or {})
+    context_type = type(context).__name__ if context is not None else None
+    return {
+        "echo": input_value,
+        "context_type": context_type,
+        "metadata": metadata,
+    }
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (root / "psi.toml").write_text(
+        """
+[package]
+psi_version = "0.1"
+org = "demo"
+name = "standalone-pack"
+version = "0.1.0"
+kind = "app"
+description = "Tactic-only demo package."
+
+[tactics.echo]
+entry = "demo_pkg.tactics:echo"
+runtime = "python"
+description = "Echo tactic."
+
+[runs.local]
+tactics = ["echo"]
+description = "Local run."
 """.lstrip(),
         encoding="utf-8",
     )
