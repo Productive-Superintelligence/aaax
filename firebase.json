@@ -2,7 +2,11 @@
   "hosting": [
     {
       "target": "docs",
-      "public": "site"
+      "public": "site",
+      "redirects": [
+        { "source": "/composition/psihub-packages/", "destination": "/composition/packages/", "type": 301 },
+        { "source": "/composition/psihub-packages", "destination": "/composition/packages/", "type": 301 }
+      ]
     }
   ]
 }

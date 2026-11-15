@@ -102,6 +102,8 @@ To keep a 0.2 package's events, move `<package>/.sssn/sssn.sqlite` to
   (the logo leads home), and a new "Use with LLLM" page covers LLLM tactics
   and packages, the LLLM hub, channels through SSSN, `lllm shell`, and
   calling a served tactic by ref.
+- The PsiHub Packages page is LLLM Packages, at `/composition/packages/`;
+  its old address, `/composition/psihub-packages/`, redirects there.
 
 ## 0.2.2
 
