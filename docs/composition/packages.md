@@ -86,16 +86,16 @@ from aaax import Strategy
 
 
 shell = Strategy("sources")
-shell.use_package("packages/source", store=".lllm/source-store")
+shell.use_package("packages/source", prefix="source", store=".lllm/source-store")
 ```
 
 - A strategy has one store. The first package with channels gives the
   strategy its store, at `store=` or `<package>/.lllm/network`, unless it
   already has one. Later packages share it, and a later `store=` naming
   another folder raises `ValueError`.
-- Package channels are created in the store under their resource names
-  (`source.events`), so a prefix keeps two packages' channels apart. Existing
-  channels are reused.
+- Package channels are created in the store under their resource names,
+  such as `source.events` for the `events` channel of the package above, so a
+  prefix keeps two packages' channels apart. Existing channels are reused.
 - The store folder and its channels are created on first use, when the app is
   built or a channel is used, never while building or inspecting the strategy.
 
