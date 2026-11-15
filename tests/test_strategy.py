@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import re
+import sys
+import types
 import warnings
 from pathlib import Path
 
@@ -290,6 +293,56 @@ def test_a_package_with_channels_needs_sssn_only_for_its_store(
     assert exit_info.value.code == 2
     assert f"error: {missing}" in capsys.readouterr().err
     assert not (package / ".lllm").exists()
+
+
+# An sssn older than 0.2 is not used: the store says to upgrade it.
+
+UPGRADE_SSSN = "aaax needs sssn>=0.2: pip install -U 'aaax[channels]'"
+
+
+def _with_old_sssn(monkeypatch, version: str | None = "0.1.1") -> None:
+    """Import sssn as if an sssn older than 0.2 were installed."""
+
+    old = types.ModuleType("sssn")
+    if version is not None:  # sssn 0.0 had no __version__
+        old.__version__ = version
+    monkeypatch.setitem(sys.modules, "sssn", old)
+
+
+@pytest.mark.parametrize("version", ["0.1.1", None])
+def test_an_sssn_older_than_0_2_says_to_upgrade_it(
+    tmp_path: Path, monkeypatch, capsys, version
+):
+    package = write_demo_package(tmp_path / "analysis-pack")
+    _with_old_sssn(monkeypatch, version)
+    strategy = load_strategy(package)
+
+    with pytest.raises(ImportError, match=re.escape(UPGRADE_SSSN)):
+        asyncio.run(strategy.invoke_resource("events", {"op": "append", "payload": 1}))
+    with pytest.raises(ImportError, match=re.escape(UPGRADE_SSSN)):
+        create_strategy_app(strategy)
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: pytest.fail("serve started"))
+    with pytest.raises(SystemExit) as exit_info:
+        main(["serve", str(package)])
+    assert exit_info.value.code == 2
+    assert f"error: {UPGRADE_SSSN}" in capsys.readouterr().err
+    assert not (package / ".lllm").exists()
+
+
+def test_an_old_sssn_imported_elsewhere_leaves_error_codes_alone(monkeypatch):
+    # sssn 0.1 had neither NetworkError nor RemoteStoreError to look up.
+    _with_old_sssn(monkeypatch)
+    for name in ("sssn.core.errors", "sssn.client.http"):
+        monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
+
+    def check(input_value=None):
+        raise ValueError("bad input")
+
+    client = TestClient(create_strategy_app(Strategy("plain").service("check", handler=check)))
+    response = client.post("/resources/check/invoke", json={"input": 1})
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["error"]["message"] == "bad input"
 
 
 class _ChannelExists(Exception):

@@ -40,8 +40,9 @@ and package manifests, and plugs into the `lllm` command.
 - Channel stores come from SSSN, imported only where a store is used.
   Without `sssn`, everything but the store works, and using the store
   raises `ImportError: Channel stores need the sssn package: pip install
-  sssn` (`aaax serve` reports it as a usage error). A store that is not an
-  SSSN store works without SSSN.
+  sssn` (`aaax serve` reports it as a usage error); with an `sssn` older
+  than 0.2, it raises `ImportError: aaax needs sssn>=0.2: pip install -U
+  'aaax[channels]'`. A store that is not an SSSN store works without SSSN.
 - A strategy has one channel store, `strategy.store`, served with SSSN's
   store API at `/network/`. Every channel resource without a handler, from a
   package or from `strategy.channel()`, is backed by the store channel of

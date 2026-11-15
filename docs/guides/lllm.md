@@ -21,8 +21,9 @@ pip install "aaax[channels]"     # with SSSN channel stores
 
 `aaax` depends on `lllm-core` with its FastAPI server. SSSN is optional: AAAX
 imports it only for a channel store and says what to install when it is
-missing. The examples on this page run top to bottom as one session, with
-`aaax[channels]` and `httpx` (for FastAPI's `TestClient`) installed.
+missing or older than 0.2. The examples on this page run top to bottom as one
+session, with `aaax[channels]` and `httpx` (for FastAPI's `TestClient`)
+installed.
 
 ## Mount LLLM Tactics
 

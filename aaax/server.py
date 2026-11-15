@@ -22,7 +22,6 @@ a 500, including a resource lookup that fails inside a handler.
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -40,7 +39,7 @@ from lllm.services import (
 )
 
 from .models import StrategyRunRequest, StrategyRunResponse
-from .strategy import _SSSN_REQUIRED, ResourceNotFoundError, Strategy
+from .strategy import ResourceNotFoundError, Strategy, _imported_sssn, _require_sssn
 
 
 def create_strategy_app(strategy: Strategy) -> FastAPI:
@@ -48,7 +47,8 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
 
     Building the app serves the strategy: it opens the strategy's store, which
     creates the declared channels, and mounts it at ``/network/``. That needs
-    sssn: without it, a strategy with a store raises ``ImportError``.
+    sssn 0.2 or newer: without it, a strategy with a store raises
+    ``ImportError``.
     """
 
     from . import __version__
@@ -165,12 +165,8 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
     for name, tactic in strategy.tactics().items():
         app.mount(f"/tactics/{name}", create_tactic_app(tactic))
     if strategy.store is not None:
-        try:
-            from sssn.server import create_app as create_store_app
-        except ModuleNotFoundError as exc:
-            if exc.name != "sssn":
-                raise
-            raise ImportError(_SSSN_REQUIRED, name="sssn") from exc
+        _require_sssn()
+        from sssn.server import create_app as create_store_app
 
         strategy.store.open()
         # Mount the StrategyStore itself so channels declared later are created too.
@@ -243,13 +239,13 @@ def _status_code(exc: Exception, *, tactic: bool = False) -> int:
         return status_code_for_error(exc)
     # Store errors exist only once sssn is imported; looking them up here
     # keeps strategies without channels from importing it.
-    errors = sys.modules.get("sssn.core.errors")
+    errors = _imported_sssn("sssn.core.errors")
     if errors is not None and isinstance(exc, errors.NetworkError):
         # The store server's own mapping, so both report a store error alike.
         from sssn.server.fastapi import _http_error as _store_http_error
 
         return _store_http_error(exc).status_code
-    client = sys.modules.get("sssn.client.http")
+    client = _imported_sssn("sssn.client.http")
     if (
         client is not None
         and isinstance(exc, client.RemoteStoreError)

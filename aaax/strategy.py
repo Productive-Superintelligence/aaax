@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import re
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Mapping
@@ -17,8 +18,10 @@ from .models import ResourceKind, StrategyInfo, StrategyResource, _segment
 Handler = Callable[..., Any | Awaitable[Any]]
 
 # Channel stores come from sssn (the ``channels`` extra); strategies without a
-# store never import it.
+# store never import it. An sssn older than 0.2, with another store layout and
+# other error names, is not used: aaax says to upgrade it.
 _SSSN_REQUIRED = "Channel stores need the sssn package: pip install sssn"
+_SSSN_TOO_OLD = "aaax needs sssn>=0.2: pip install -U 'aaax[channels]'"
 
 
 class ResourceNotFoundError(KeyError):
@@ -69,12 +72,8 @@ class StrategyStore:
         # wait, so no caller gets the store before its channels exist.
         with self._lock:
             if self._store is None:
-                try:
-                    from sssn.stores import LocalStore
-                except ModuleNotFoundError as exc:
-                    if exc.name != "sssn":
-                        raise
-                    raise ImportError(_SSSN_REQUIRED, name="sssn") from exc
+                _require_sssn()
+                from sssn.stores import LocalStore
 
                 self._store = LocalStore(self.root)
             for name, channel in list(self._pending.items()):
@@ -558,6 +557,38 @@ def _channel_exists(exc: Exception) -> bool:
         return True
     # A RemoteStore reports an existing channel as an HTTP 409 error.
     return getattr(exc, "error_type", None) == "ChannelExistsError"
+
+
+def _require_sssn() -> None:
+    """Import sssn before aaax uses it: it must be installed, 0.2 or newer."""
+
+    try:
+        import sssn
+    except ModuleNotFoundError as exc:
+        if exc.name != "sssn":
+            raise
+        raise ImportError(_SSSN_REQUIRED, name="sssn") from exc
+    if not _sssn_supported(sssn):
+        raise ImportError(_SSSN_TOO_OLD, name="sssn")
+
+
+def _imported_sssn(module: str) -> Any:
+    """sssn's ``module`` if it is imported and sssn is 0.2 or newer, else None.
+
+    Looking sssn's errors up here never imports sssn, and skips an older sssn
+    that something else imported, which has other error names.
+    """
+
+    sssn = sys.modules.get("sssn")
+    if sssn is None or not _sssn_supported(sssn):
+        return None
+    return sys.modules.get(module)
+
+
+def _sssn_supported(sssn: Any) -> bool:
+    # Only major.minor counts, so 0.2 pre-releases pass; sssn 0.0 had no __version__.
+    match = re.match(r"(\d+)\.(\d+)", str(getattr(sssn, "__version__", "")))
+    return match is not None and (int(match[1]), int(match[2])) >= (0, 2)
 
 
 def _store_label(store: Any) -> str:

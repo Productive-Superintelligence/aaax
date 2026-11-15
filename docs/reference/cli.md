@@ -53,7 +53,7 @@ Validation:
   `warning`.
 
 A target that does not load, and a strategy with channels when SSSN is not
-installed, are usage errors (exit status `2`):
+installed or is older than 0.2, are usage errors (exit status `2`):
 
 ```text
 aaax: error: Channel stores need the sssn package: pip install sssn
