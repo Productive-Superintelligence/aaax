@@ -80,7 +80,6 @@ from aaax import load_strategy, strategy_from_package
 `load_strategy(target)` accepts:
 
 - a directory containing `strategy.py`;
-- a directory containing `aaax.py`;
 - a directory containing `shell.py`, the name LLLM 0.3's `lllm shell` used;
 - a directory containing `lllm.toml`;
 - a direct Python file, with a `build_strategy()` factory or a `strategy`
@@ -91,6 +90,11 @@ from aaax import load_strategy, strategy_from_package
 
 A directory is checked in that order, so a strategy file wins over the
 package manifest next to it.
+
+Don't name a strategy file `aaax.py`: in its folder that file shadows the
+`aaax` package, so `lllm shell` and `python -m aaax` fail there. An `aaax.py`
+from AAAX 0.2 still loads, with a `FutureWarning` that says to rename it to
+`strategy.py`; in a directory it comes after `shell.py`.
 
 `strategy_from_package(path, name=None, prefix=None, store=None, bind=True)`
 creates a shell directly from one LLLM package, with the package card and

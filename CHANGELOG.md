@@ -28,9 +28,12 @@ and package manifests, and plugs into the `lllm` command.
   LLLM's `coerce_tactic`, the rule `lllm serve` uses, and report their
   manifest ref as their `package_ref`.
 - The old `lllm.shell` import path is a deprecated alias in LLLM 0.4 that
-  imports `aaax`; import `aaax` instead. The loader still finds a
-  directory's `shell.py`, the strategy file `lllm shell` loaded, after
-  `strategy.py` and `aaax.py`.
+  imports `aaax`; import `aaax` instead. In a directory, the loader looks
+  for `strategy.py`, then `shell.py`, the strategy file `lllm shell` loaded.
+- `aaax.py`, the other strategy file name AAAX 0.2 loaded, is deprecated: in
+  its folder it shadows the `aaax` package, so `lllm shell` and
+  `python -m aaax` fail there. It still loads, after `shell.py`, with a
+  `FutureWarning` that says to rename it to `strategy.py`.
 
 **Channels**
 
@@ -78,6 +81,7 @@ and package manifests, and plugs into the `lllm` command.
 | --- | --- |
 | `psi.toml`, with `psi_version` | `lllm.toml`, with `manifest_version` (optional) |
 | `psi://` refs | `lllm://` refs |
+| a strategy file named `aaax.py` | `strategy.py` (`aaax.py` loads with a `FutureWarning`) |
 | one channel store per package, `<package>/.sssn` | one store per strategy, `<package>/.lllm/network` by default |
 | `"context": {"request": "demo"}` on `/tactics/<name>/run` | `"context": {"metadata": {"request": "demo"}}` |
 | `/tactics/<name>/run` answers `{"output", "strategy", "metadata"}` | `{"output", "request_id", "tactic"}`, LLLM's service envelope |

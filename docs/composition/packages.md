@@ -12,10 +12,9 @@ shell = load_strategy("packages/analyst-pack")
 shell = load_strategy("packages/analyst-pack/lllm.toml")
 ```
 
-In a directory, the loader first looks for `strategy.py`, `aaax.py`, and
-`shell.py` (the name LLLM 0.3's `lllm shell` used), in that order, and mounts
-the `lllm.toml` only when none exists. That keeps explicit strategy files in
-control when both exist.
+In a directory, the loader first looks for `strategy.py`, then `shell.py` (the
+name LLLM 0.3's `lllm shell` used), and mounts the `lllm.toml` only when
+neither exists. That keeps explicit strategy files in control when both exist.
 
 A package fetched from the hub is an ordinary folder:
 

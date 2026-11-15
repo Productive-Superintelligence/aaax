@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import warnings
 from pathlib import Path
 
 import pytest
@@ -89,9 +90,9 @@ def build_strategy():
 @pytest.mark.parametrize(
     ("files", "loaded"),
     [
-        (["aaax.py"], "aaax"),
         (["shell.py"], "shell"),  # the name LLLM 0.3's `lllm shell` loaded
-        (["aaax.py", "shell.py"], "aaax"),
+        (["strategy.py", "shell.py"], "strategy"),
+        (["aaax.py", "shell.py"], "shell"),
         (["strategy.py", "aaax.py", "shell.py"], "strategy"),
     ],
 )
@@ -103,13 +104,28 @@ def test_strategy_files_load_before_the_package_manifest(tmp_path: Path, files, 
         )
     (tmp_path / "lllm.toml").write_text('[package]\nname = "pkg"\n', encoding="utf-8")
 
-    assert load_strategy(tmp_path).name == loaded
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        assert load_strategy(tmp_path).name == loaded
+
+
+def test_an_aaax_py_strategy_still_loads_with_a_warning_to_rename_it(tmp_path: Path):
+    # AAAX 0.2 loaded aaax.py too, but in its folder that file shadows the
+    # aaax package, so `lllm shell` and `python -m aaax` cannot import AAAX.
+    (tmp_path / "aaax.py").write_text(
+        "from aaax import Strategy\nstrategy = Strategy('legacy')\n", encoding="utf-8"
+    )
+    (tmp_path / "lllm.toml").write_text('[package]\nname = "pkg"\n', encoding="utf-8")
+
+    for target in (tmp_path, tmp_path / "aaax.py"):
+        with pytest.warns(FutureWarning, match=r"aaax\.py to strategy\.py: a file named"):
+            assert load_strategy(target).name == "legacy"
 
 
 def test_strategy_loader_names_what_a_directory_needs(tmp_path: Path):
     with pytest.raises(
         ValueError,
-        match="strategy directory must contain strategy.py, aaax.py, shell.py, or lllm.toml",
+        match="strategy directory must contain strategy.py, shell.py, or lllm.toml",
     ):
         load_strategy(tmp_path)
 

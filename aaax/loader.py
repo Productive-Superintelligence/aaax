@@ -6,6 +6,7 @@ import importlib
 import importlib.util
 import inspect
 import sys
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -20,16 +21,15 @@ def load_strategy(target: str | Path) -> Strategy:
     text = _target_text(target)
     path = Path(text).expanduser()
     if path.is_dir():
-        # shell.py is the name LLLM 0.3's `lllm shell` loaded.
-        for name in ("strategy.py", "aaax.py", "shell.py"):
+        # shell.py is the name LLLM 0.3's `lllm shell` loaded; aaax.py, the
+        # other name AAAX 0.2 loaded, comes last and warns (see _load_file).
+        for name in ("strategy.py", "shell.py", "aaax.py"):
             candidate = path / name
             if candidate.is_file():
                 return _load_file(candidate)
         if (path / "lllm.toml").is_file():
             return strategy_from_package(path)
-        raise ValueError(
-            "strategy directory must contain strategy.py, aaax.py, shell.py, or lllm.toml"
-        )
+        raise ValueError("strategy directory must contain strategy.py, shell.py, or lllm.toml")
     if path.is_file():
         if path.name == "lllm.toml":
             return strategy_from_package(path)
@@ -46,6 +46,15 @@ def load_strategy(target: str | Path) -> Strategy:
 
 
 def _load_file(path: Path) -> Strategy:
+    if path.name == "aaax.py":
+        # `python -m aaax` and `lllm shell` put the working directory on
+        # sys.path, where an aaax.py is imported in place of the aaax package.
+        warnings.warn(
+            f"rename {path} to strategy.py: a file named aaax.py shadows the aaax "
+            "package, so `lllm shell` and `python -m aaax` fail in its folder",
+            FutureWarning,
+            stacklevel=3,
+        )
     module_name = f"_aaax_strategy_{abs(hash(path.resolve()))}"
     with _import_path(path.parent):
         spec = importlib.util.spec_from_file_location(module_name, path)

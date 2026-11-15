@@ -92,14 +92,17 @@ def test_every_version_is_the_aaax_version(capsys):
     assert openapi["info"]["version"] == aaax.__version__
 
 
+def console_script(name):
+    script = shutil.which(name, path=os.path.dirname(sys.executable))
+    if script is None:
+        pytest.skip(f"the {name} console script is not installed next to {sys.executable}")
+    return script
+
+
 @pytest.mark.parametrize("command", [["aaax", "--help"], ["lllm", "shell", "--help"]])
 def test_console_scripts_show_help(command):
-    script = shutil.which(command[0], path=os.path.dirname(sys.executable))
-    if script is None:
-        pytest.skip(f"the {command[0]} console script is not installed next to {sys.executable}")
-
     result = subprocess.run(
-        [script, *command[1:]], capture_output=True, text=True, check=False
+        [console_script(command[0]), *command[1:]], capture_output=True, text=True, check=False
     )
 
     assert result.returncode == 0, result.stderr
@@ -116,6 +119,67 @@ def test_python_m_aaax_runs_the_cli():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("usage: aaax ")
+
+
+DESK_STRATEGY = "from aaax import Strategy\nstrategy = Strategy('desk', description='Triage.')\n"
+
+
+@pytest.mark.parametrize("name", ["strategy.py", "shell.py"])
+@pytest.mark.parametrize("command", [["aaax"], ["lllm", "shell"], ["python", "-m", "aaax"]])
+def test_every_command_inspects_a_strategy_in_the_working_directory(tmp_path, command, name):
+    # `lllm shell` and `python -m aaax` put the working directory on sys.path
+    # before they import aaax.
+    (tmp_path / name).write_text(DESK_STRATEGY, encoding="utf-8")
+    program = sys.executable if command[0] == "python" else console_script(command[0])
+
+    result = subprocess.run(
+        [program, *command[1:], "inspect", "."],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "desk: Triage.\n"
+
+
+def test_aaax_inspects_an_aaax_py_folder_and_says_to_rename_the_file(tmp_path):
+    (tmp_path / "aaax.py").write_text(DESK_STRATEGY, encoding="utf-8")
+
+    result = subprocess.run(
+        [console_script("aaax"), "inspect", "."],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "desk: Triage.\n"
+    assert "FutureWarning: rename aaax.py to strategy.py" in result.stderr
+
+
+@pytest.mark.xfail(
+    reason=(
+        "lllm.cli puts the working directory on sys.path before it imports "
+        "aaax.cli, so the folder's aaax.py is imported as the aaax package"
+    ),
+    raises=AssertionError,
+)
+def test_lllm_shell_inspects_an_aaax_py_folder(tmp_path):
+    (tmp_path / "aaax.py").write_text(DESK_STRATEGY, encoding="utf-8")
+
+    result = subprocess.run(
+        [console_script("lllm"), "shell", "inspect", "."],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "desk: Triage.\n"
 
 
 def test_the_deprecated_lllm_shell_path_reaches_aaax():

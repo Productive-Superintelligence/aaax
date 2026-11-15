@@ -102,8 +102,8 @@ next system in a larger loop.
 
 - `Strategy`, `StrategyResource`, and the shell's mounted resource table.
 - Pydantic request, response, resource, and strategy description models.
-- Loading `strategy.py`, `aaax.py`, `module:factory`, package folders, and
-  direct `lllm.toml` files.
+- Loading `strategy.py`, `module:factory`, package folders, and direct
+  `lllm.toml` files.
 - Mounting LLLM package resources into one local namespace.
 - Serving every mounted tactic with LLLM's tactic service.
 - Backing channel resources with one SSSN store per strategy.

@@ -21,8 +21,9 @@ aaax inspect TARGET --json
 ```
 
 `TARGET` can be a strategy file, a package folder, a direct `lllm.toml`, a
-directory with `strategy.py`, `aaax.py`, or `shell.py`, or a `module:attribute`
-value.
+directory with `strategy.py` or `shell.py`, or a `module:attribute` value.
+Don't name a strategy file `aaax.py`: run in its folder, `lllm shell` and
+`python -m aaax` import that file in place of the `aaax` package and fail.
 
 Text output lists resource kind, local name, and ref or entrypoint:
 
