@@ -496,9 +496,9 @@ def _tactic_context(tactic: Tactic[Any, Any], context: Any) -> CallContext:
 
     if isinstance(context, CallContext):
         return context
-    from lllm.services.fastapi import _context_from_data
+    from lllm.services import call_context_from_data
 
-    return _context_from_data(context, tactic=tactic, endpoint="run")
+    return call_context_from_data(context, tactic=tactic, endpoint="run")
 
 
 def _channel_handler(store: Any, name: str) -> Handler:

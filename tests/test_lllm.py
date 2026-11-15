@@ -1,5 +1,6 @@
 """AAAX plugs into LLLM: `lllm shell`, the aaax command, and the old lllm.shell path."""
 
+import ast
 import importlib.util
 import os
 import re
@@ -208,3 +209,26 @@ def test_the_deprecated_lllm_shell_path_reaches_aaax():
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("DeprecationWarning")
     assert "import aaax" in result.stdout
+
+
+def test_aaax_imports_only_public_lllm_names():
+    # LLLM makes public what packages built on it need, such as the request
+    # context and error status helpers of lllm.services; private names may change.
+    imported = {
+        (node.module, alias.name)
+        for path in sorted((ROOT / "aaax").rglob("*.py"))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "lllm"
+        for alias in node.names
+    }
+    private = sorted(
+        f"from {module} import {name}"
+        for module, name in imported
+        if any(part.startswith("_") for part in [*module.split("."), name])
+    )
+
+    assert {
+        ("lllm.services", "call_context_from_data"),
+        ("lllm.services", "status_code_for_error"),
+    } <= imported
+    assert private == []

@@ -32,8 +32,12 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from lllm.protocol import SchemaError, TacticUnsupportedError
-from lllm.services import ErrorDetail, ErrorResponse, create_tactic_app
-from lllm.services.fastapi import _status_code_for_error
+from lllm.services import (
+    ErrorDetail,
+    ErrorResponse,
+    create_tactic_app,
+    status_code_for_error,
+)
 
 from .models import StrategyRunRequest, StrategyRunResponse
 from .strategy import _SSSN_REQUIRED, ResourceNotFoundError, Strategy
@@ -236,7 +240,7 @@ def _error_payload(exc: Exception, **fields: Any) -> dict[str, Any]:
 def _status_code(exc: Exception, *, tactic: bool = False) -> int:
     if tactic:
         # The tactic service's mapping, so both tactic routes agree.
-        return _status_code_for_error(exc)
+        return status_code_for_error(exc)
     # Store errors exist only once sssn is imported; looking them up here
     # keeps strategies without channels from importing it.
     errors = sys.modules.get("sssn.core.errors")
