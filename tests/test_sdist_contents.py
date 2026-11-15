@@ -34,6 +34,14 @@ def test_sdist_includes_docs_and_tutorials(tmp_path: Path):
         "assets/aaax-logo-text-black.png",
         "assets/aaax-logo-text-white.png",
         "mkdocs.yml",
+        # setuptools ships tests/test*.py; they import tests/helpers.py, and
+        # the deploy test reads the deploy script and the Firebase config.
+        "tests/test_channels.py",
+        "tests/helpers.py",
+        "tests/test_deploy_firebase_hosting.py",
+        ".firebaserc",
+        "firebase.json",
+        "scripts/deploy_firebase_hosting.py",
         "docs/index.md",
         "docs/assets/aaax-logo-text-black.png",
         "docs/assets/aaax-logo-text-white.png",
