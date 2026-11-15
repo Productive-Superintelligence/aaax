@@ -2,46 +2,47 @@ name: CI
 
 on:
   push:
-    branches: [main, v2]
   pull_request:
-    branches: [main, v2]
-  workflow_dispatch:
 
-permissions:
-  contents: read
+env:
+  # aaax needs lllm-core 0.4, and its channel tests need sssn 0.2; neither is
+  # on PyPI yet. Until lllm-core 0.4.0 and sssn 0.2.0 are released, install
+  # them from the main branches of LLLM and SSSN before aaax; then delete
+  # LLLM_CORE, SSSN, and the steps that install them, and let pip resolve both.
+  LLLM_CORE: "lllm-core @ git+https://github.com/Productive-Superintelligence/lllm@main"
+  SSSN: "sssn @ git+https://github.com/Productive-Superintelligence/sssn@main"
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]
-
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install AAAX
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,docs]"
-
-      - name: Smoke test imports
-        run: |
-          python -c "
-          import aaax
-          from aaax import Strategy, create_strategy_app
-          print('AAAX imports OK', aaax.__version__)
-          "
-
-      - name: Run tests
-        run: pytest -q
-
-      - name: Build docs
-        run: mkdocs build --strict
-
-      - name: Build distributions
-        run: python -m build
+      - run: python -m pip install -U pip
+      - run: python -m pip install "$LLLM_CORE" "$SSSN"
+      - run: python -m pip install -e ".[dev,docs]"
+      - run: pytest
+      - run: mkdocs build --strict
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - run: |
+          python -m venv /tmp/aaax-wheel-smoke
+          /tmp/aaax-wheel-smoke/bin/python -m pip install -U pip
+          /tmp/aaax-wheel-smoke/bin/python -m pip install "$LLLM_CORE"
+          /tmp/aaax-wheel-smoke/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/aaax-wheel-smoke/bin/python -c "from aaax import Strategy, create_strategy_app; print(Strategy.__name__)"
+          /tmp/aaax-wheel-smoke/bin/aaax --help
+          /tmp/aaax-wheel-smoke/bin/lllm shell --help
+      # The wheel venv has no sssn, the channels extra: aaax runs without it,
+      # and the channel tests skip.
+      - run: |
+          /tmp/aaax-wheel-smoke/bin/python -m pip install pytest httpx
+          cd /tmp
+          /tmp/aaax-wheel-smoke/bin/python -m pytest -p no:cacheprovider "$GITHUB_WORKSPACE/tests"
