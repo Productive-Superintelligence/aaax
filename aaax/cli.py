@@ -1,10 +1,16 @@
-"""AAAX command line interface."""
+"""AAAX command line interface.
+
+It runs as ``aaax`` and, through the ``lllm.commands`` entry point, as
+``lllm shell``.
+"""
 
 from __future__ import annotations
 
 import argparse
 import ipaddress
 import json
+import sys
+from pathlib import Path
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
@@ -17,8 +23,8 @@ LOG_LEVELS = {"critical", "debug", "error", "info", "trace", "warning"}
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="aaax", description="AAAX strategy tools")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser = argparse.ArgumentParser(prog=_prog(), description="AAAX strategy tools")
+    parser.add_argument("--version", action="version", version=f"aaax {__version__}")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     inspect_cmd = subcommands.add_parser("inspect", help="Inspect a strategy")
@@ -59,10 +65,14 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
         strategy = _load_or_error(parser, args.target)
+        try:
+            app = create_strategy_app(strategy)
+        except ImportError as exc:  # e.g. a channel store without sssn
+            parser.error(str(exc))
         import uvicorn
 
         uvicorn.run(
-            create_strategy_app(strategy),
+            app,
             host=host,
             port=port,
             log_level=log_level,
@@ -79,6 +89,14 @@ def _load_or_error(parser: argparse.ArgumentParser, target: str) -> Any:
     except (OSError, TypeError, ValueError, AttributeError, ImportError) as exc:
         parser.error(str(exc))
         raise
+
+
+def _prog() -> str:
+    # The lllm command runs this CLI as `lllm shell`; name the command the
+    # user typed in usage and error messages.
+    if sys.argv and Path(sys.argv[0]).name == "lllm":
+        return "lllm shell"
+    return "aaax"
 
 
 def _serve_host(value: str) -> str:

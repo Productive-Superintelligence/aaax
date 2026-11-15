@@ -1,14 +1,16 @@
-"""PsiHub package integration for AAAX strategies."""
+"""LLLM hub package integration for AAAX strategies."""
 
 from __future__ import annotations
 
-import inspect
+import copy
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from lllm.protocol.refs import tactic_ref_value
+
 from .models import StrategyResource
-from .strategy import Handler, Strategy
+from .strategy import Strategy, StrategyStore
 
 
 def strategy_from_package(
@@ -19,7 +21,7 @@ def strategy_from_package(
     store: str | Path | None = None,
     bind: bool = True,
 ) -> Strategy:
-    """Create a strategy from one PsiHub package folder."""
+    """Create a strategy from one LLLM hub package folder."""
 
     manifest = _load_manifest(path)
     strategy = Strategy(
@@ -43,17 +45,36 @@ def add_package(
     store: str | Path | None = None,
     bind: bool = True,
 ) -> Strategy:
-    """Add package resources and local handlers to an existing strategy."""
+    """Add package resources and local handlers to an existing strategy.
+
+    Resource names are ``<prefix>.<name>`` with a ``prefix``. A package whose
+    names clash with resources already in the strategy is rejected before
+    anything is added; mount it with a prefix to keep the names apart.
+
+    With ``bind`` (the default), tactics get handlers that import the package
+    on first use, and channels are backed by the strategy's one store under
+    their resource names, so prefixed packages never share a channel. If the
+    strategy has no store yet, the package opens one at ``store`` (default
+    ``<package>/.lllm/network``); packages mounted later share it, and a
+    ``store`` other than the strategy's raises ``ValueError``. The store is
+    opened, and the channels created, on first use, never while building or
+    inspecting. ``bind=False`` adds metadata only.
+    """
 
     manifest = _load_manifest(path)
     base_dir = manifest.base_dir or _manifest_base(path)
     package_prefix = _resource_prefix(prefix)
     package_name = _local_name(package_prefix, manifest.package.name)
+    _check_names(strategy, manifest, package_prefix)
+    if bind and manifest.channels and (strategy.store is None or store is not None):
+        root = base_dir / ".lllm" / "network" if store is None else store
+        strategy.attach_store(StrategyStore(root=root))
+    store_root = strategy.store.root if bind and strategy.store is not None else None
     strategy.add_resource(
         StrategyResource(
             kind="package",
             name=package_name,
-            ref=f"psi://{manifest.package.org}/{manifest.package.name}",
+            ref=f"lllm://{manifest.package.org}/{manifest.package.name}",
             description=manifest.package.description,
             metadata={
                 "package": manifest.identifier,
@@ -81,7 +102,6 @@ def add_package(
             )
         )
 
-    tactic_handlers: dict[str, Handler] = {}
     for name, resource in manifest.schemas.items():
         strategy.add_resource(
             _strategy_resource(
@@ -95,9 +115,15 @@ def add_package(
             )
         )
 
+    tactic_handlers: dict[str, PackageTactic] = {}
     for name, resource in manifest.tactics.items():
         handler = (
-            _tactic_handler(resource.entry, base_dir=base_dir, name=name)
+            PackageTactic(
+                resource.entry,
+                base_dir=base_dir,
+                name=name,
+                ref=manifest.ref("tactic", name),
+            )
             if bind
             else None
         )
@@ -122,18 +148,14 @@ def add_package(
             handler=handler,
         )
 
-    channel_store = (
-        _channel_store(manifest, store=store)
-        if bind and manifest.channels
-        else None
-    )
     for name, resource in manifest.channels.items():
-        handler = (
-            _channel_handler(channel_store, name)
-            if channel_store is not None
-            else None
-        )
-        strategy.add_resource(
+        channel = {
+            "schema": resource.schema,
+            "form": resource.form,
+            "description": resource.description,
+            "metadata": resource.metadata,
+        }
+        strategy._add_resource(
             _strategy_resource(
                 manifest,
                 "channel",
@@ -143,11 +165,11 @@ def add_package(
                     **resource.metadata,
                     "schema": resource.schema,
                     "form": resource.form,
-                    "store": str(getattr(channel_store, "root", "")) or None,
+                    "store": None if store_root is None else str(store_root),
                 },
                 prefix=package_prefix,
             ),
-            handler=handler,
+            channel=channel if bind else None,
         )
 
     for name, resource in manifest.snapshots.items():
@@ -288,128 +310,95 @@ def _strategy_resource(
     )
 
 
-def _tactic_handler(entrypoint: str, *, base_dir: Path, name: str) -> Handler:
-    async def handler(
+class PackageTactic:
+    """A package tactic entrypoint, imported on first use.
+
+    Building or inspecting a strategy never imports package code; serving it
+    (or invoking the resource) does. A loaded tactic without a ``package_ref``
+    gets ``ref``, the manifest ref ``lllm://org/package/tactics/name``, on a
+    copy: the imported object may be shared with other packages or modules,
+    and it is left as it is. A ``ref`` that is not a valid tactic ref (the hub
+    accepts tactic names, like ``a#b``, that a ref cannot carry) is not used.
+    """
+
+    def __init__(
+        self,
+        entrypoint: str,
+        *,
+        base_dir: Path,
+        name: str,
+        ref: str | None = None,
+    ) -> None:
+        self.entrypoint = entrypoint
+        self.base_dir = base_dir
+        self.name = name
+        self.ref = _tactic_ref(ref)
+        self._tactic: Any = None
+
+    def load(self) -> Any:
+        if self._tactic is None:
+            tactic = _load_tactic(self.entrypoint, base_dir=self.base_dir, name=self.name)
+            if self.ref is not None and tactic.package_ref is None:
+                tactic = copy.copy(tactic)
+                tactic.package_ref = self.ref
+            self._tactic = tactic
+        return self._tactic
+
+    async def __call__(
+        self,
         input_value: Any = None,
         *,
         context: Mapping[str, Any] | None = None,
     ) -> Any:
-        tactic = _load_tactic(entrypoint, base_dir=base_dir, name=name)
-        if hasattr(tactic, "arun") and callable(tactic.arun):
-            return await tactic.arun(input_value, context=_call_context(context))
-        if hasattr(tactic, "run") and callable(tactic.run):
-            return tactic.run(input_value, context=_call_context(context))
-        if callable(tactic):
-            result = _call_plain_tactic(tactic, input_value, context=context)
-            if inspect.isawaitable(result):
-                return await result
-            return result
-        raise TypeError(f"Tactic entrypoint is not callable: {entrypoint}")
-
-    return handler
+        return await self.load().arun(input_value, context=_call_context(context))
 
 
 def _load_tactic(entrypoint: str, *, base_dir: Path, name: str) -> Any:
-    from psihub import import_entrypoint
+    from lllm.hub import import_entrypoint
+    from lllm.runtimes import coerce_tactic
 
-    value = import_entrypoint(entrypoint, base_dir=base_dir)
+    return coerce_tactic(
+        import_entrypoint(entrypoint, base_dir=base_dir, keep_loaded=True),
+        name=name,
+    )
+
+
+def _tactic_ref(ref: str | None) -> str | None:
+    if ref is None:
+        return None
     try:
-        from lllm import Tactic, as_tactic
-    except ImportError:
-        Tactic = None  # type: ignore[assignment]
-        as_tactic = None  # type: ignore[assignment]
-
-    if Tactic is not None:
-        if isinstance(value, type) and issubclass(value, Tactic):
-            return value(name=name)
-        if isinstance(value, Tactic):
-            return value
-    if callable(value) and _can_call_without_args(value):
-        produced = value()
-        if Tactic is not None:
-            if isinstance(produced, type) and issubclass(produced, Tactic):
-                return produced(name=name)
-            if isinstance(produced, Tactic):
-                return produced
-        if hasattr(produced, "run") and callable(produced.run) and as_tactic is not None:
-            return as_tactic(produced.run, name=name)
-        if callable(produced) and as_tactic is not None:
-            return as_tactic(produced, name=name)
-    if hasattr(value, "run") and callable(value.run) and as_tactic is not None:
-        return as_tactic(value.run, name=name)
-    if callable(value) and as_tactic is not None:
-        return as_tactic(value, name=name)
-    return value
+        return tactic_ref_value(ref)
+    except ValueError:
+        return None
 
 
-def _channel_store(manifest: Any, *, store: str | Path | None) -> Any:
-    try:
-        from sssn import ChannelExistsError, LocalStore
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError(
-            "Install aaax[integrations] to bind channel resources."
-        ) from exc
-
-    base_dir = manifest.base_dir or Path.cwd()
-    store_root = Path(store).expanduser() if store is not None else base_dir / ".sssn"
-    local_store = LocalStore(store_root)
-    for name, channel in manifest.channels.items():
-        try:
-            local_store.create_channel(
-                {
-                    "name": name,
-                    "schema": channel.schema,
-                    "form": channel.form,
-                    "description": channel.description,
-                    "metadata": channel.metadata,
-                }
-            )
-        except ChannelExistsError:
-            pass
-    return local_store
-
-
-def _channel_handler(store: Any, name: str) -> Handler:
-    async def handler(
-        input_value: Any = None,
-        *,
-        context: Mapping[str, Any] | None = None,
-    ) -> Any:
-        request = input_value if isinstance(input_value, Mapping) else {}
-        op = str(request.get("op") or "query")
-        if op == "info":
-            return store.get_channel(name)
-        if op == "append":
-            event = {
-                "channel": name,
-                "payload": request.get("payload"),
-                "kind": request.get("kind") or "event",
-                "source": request.get("source") or "aaax",
-                "schema": request.get("schema"),
-                "metadata": request.get("metadata") or {},
-                "correlation_id": request.get("correlation_id"),
-                "parent_ids": tuple(request.get("parent_ids") or ()),
-            }
-            return store.append_event(event)
-        if op == "query":
-            return list(
-                store.query_events(
-                    name,
-                    after_cursor=_non_negative_int(request.get("after_cursor", 0)),
-                    limit=_positive_int(request.get("limit", 100)),
-                    kind=request.get("kind"),
-                )
-            )
-        raise ValueError("channel op must be one of: append, info, query")
-
-    return handler
+def _check_names(strategy: Strategy, manifest: Any, prefix: str | None) -> None:
+    sections = (
+        manifest.schemas,
+        manifest.tactics,
+        manifest.channels,
+        manifest.snapshots,
+        manifest.services,
+        manifest.runs,
+        manifest.docs,
+        manifest.examples,
+        manifest.assets,
+    )
+    names = [manifest.package.name, *(["default"] if manifest.config is not None else [])]
+    names += [name for section in sections for name in section]
+    existing = {resource.name for resource in strategy.resources}
+    taken = sorted({_local_name(prefix, name) for name in names} & existing)
+    if taken:
+        raise ValueError(
+            f"Cannot mount package {manifest.identifier}: strategy {strategy.name!r} "
+            f"already has resources named {', '.join(taken)}. Mount it with a "
+            "prefix to keep the names apart."
+        )
 
 
 def _load_manifest(path: str | Path) -> Any:
-    try:
-        from psihub import load_manifest
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError("Install aaax[integrations] to load PsiHub packages.") from exc
+    from lllm.hub import load_manifest
+
     return load_manifest(path)
 
 
@@ -436,90 +425,16 @@ def _local_name(prefix: str | None, name: str) -> str:
     return f"{prefix}.{name}" if prefix else name
 
 
-def _can_call_without_args(value: Any) -> bool:
-    try:
-        signature = inspect.signature(value)
-    except (TypeError, ValueError):
-        return False
-    for parameter in signature.parameters.values():
-        if parameter.default is inspect.Parameter.empty and parameter.kind in {
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        }:
-            return False
-    return True
-
-
-def _call_plain_tactic(
-    tactic: Any,
-    input_value: Any,
-    *,
-    context: Mapping[str, Any] | None,
-) -> Any:
-    signature = _signature(tactic)
-    kwargs: dict[str, Any] = {}
-    if signature is not None and _accepts_context(signature):
-        kwargs["context"] = _call_context(context)
-    if signature is not None and not _can_accept_input(signature):
-        return tactic(**kwargs)
-    return tactic(input_value, **kwargs)
-
-
-def _signature(value: Any) -> inspect.Signature | None:
-    try:
-        return inspect.signature(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _accepts_context(signature: inspect.Signature) -> bool:
-    if "context" in signature.parameters:
-        return True
-    return any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in signature.parameters.values()
-    )
-
-
-def _can_accept_input(signature: inspect.Signature) -> bool:
-    for parameter in signature.parameters.values():
-        if parameter.name == "context":
-            continue
-        if parameter.kind in {
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        }:
-            return True
-    return any(
-        parameter.kind is inspect.Parameter.VAR_POSITIONAL
-        for parameter in signature.parameters.values()
-    )
-
-
 def _call_context(context: Mapping[str, Any] | None) -> Any:
     if context is None:
         return None
     try:
-        from lllm import CallContext
+        from lllm.protocol import CallContext
     except ImportError:
         return dict(context)
     if isinstance(context, CallContext):
         return context
     return CallContext(metadata=dict(context))
-
-
-def _non_negative_int(value: Any) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError("after_cursor must be a non-negative integer")
-    return value
-
-
-def _positive_int(value: Any) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ValueError("limit must be a positive integer")
-    return value
 
 
 def _model_dump(value: Any) -> Any:

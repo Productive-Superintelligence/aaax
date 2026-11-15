@@ -1,4 +1,4 @@
-"""AAAX PSI shell."""
+"""AAAX: the strategy shell for LLLM. Mount packages and serve them as one surface."""
 
 from .loader import load_strategy
 from .models import (
@@ -11,7 +11,7 @@ from .server import create_strategy_app
 from .strategy import Strategy
 from .packages import add_package, strategy_from_package
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 __all__ = [
     "Strategy",

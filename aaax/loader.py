@@ -20,15 +20,18 @@ def load_strategy(target: str | Path) -> Strategy:
     text = _target_text(target)
     path = Path(text).expanduser()
     if path.is_dir():
-        for name in ("strategy.py", "aaax.py"):
+        # shell.py is the name LLLM 0.3's `lllm shell` loaded.
+        for name in ("strategy.py", "aaax.py", "shell.py"):
             candidate = path / name
             if candidate.is_file():
                 return _load_file(candidate)
-        if (path / "psi.toml").is_file():
+        if (path / "lllm.toml").is_file():
             return strategy_from_package(path)
-        raise ValueError("strategy directory must contain strategy.py or aaax.py")
+        raise ValueError(
+            "strategy directory must contain strategy.py, aaax.py, shell.py, or lllm.toml"
+        )
     if path.is_file():
-        if path.name == "psi.toml":
+        if path.name == "lllm.toml":
             return strategy_from_package(path)
         return _load_file(path)
     if ":" in text:

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aaax"
-version = "0.2.2"
-description = "PSI shell for inspecting, mounting, and serving application packages."
+version = "0.3.0"
+description = "Strategy shell for inspecting, mounting, and serving application packages, built on LLLM."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -16,9 +16,8 @@ keywords = [
   "agentic systems",
   "strategy",
   "fastapi",
-  "sssn",
   "lllm",
-  "psihub",
+  "sssn",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -34,25 +33,15 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-  "fastapi>=0.115",
+  # lllm-core's server extra brings FastAPI and Uvicorn.
+  "lllm-core[server]>=0.4",
   "pydantic>=2.7",
-  "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
-packages = [
-  "psihub>=0.0.1",
-]
-tactics = [
-  "lllm-core>=0.2.1",
-]
+# Channel stores (attach_store, package channels, /network/) come from sssn.
 channels = [
-  "sssn>=0.1.1",
-]
-integrations = [
-  "lllm-core>=0.2.1",
-  "psihub>=0.0.1",
-  "sssn>=0.1.1",
+  "sssn>=0.2",
 ]
 docs = [
   "mkdocs>=1.6",
@@ -62,13 +51,11 @@ docs = [
 dev = [
   "build>=1.2",
   "httpx>=0.27",
-  "lllm-core>=0.2.1",
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",
-  "psihub>=0.0.1",
   "pymdown-extensions>=10.8",
   "pytest>=8.0",
-  "sssn>=0.1.1",
+  "sssn>=0.2",
   "twine>=5.1",
 ]
 
@@ -80,6 +67,10 @@ Issues = "https://github.com/Productive-Superintelligence/aaax/issues"
 
 [project.scripts]
 aaax = "aaax.cli:main"
+
+# Installing aaax adds `lllm shell` to the lllm command.
+[project.entry-points."lllm.commands"]
+shell = "aaax.cli"
 
 [tool.setuptools.packages.find]
 where = ["."]

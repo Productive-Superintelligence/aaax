@@ -1,23 +1,31 @@
+"""Strategies, the loader, the CLI, and the app, without a channel store.
+
+Nothing here needs sssn; channel stores are tested in test_channels.py.
+"""
+
 from __future__ import annotations
 
+import asyncio
 import builtins
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from aaax import Strategy, create_strategy_app, load_strategy
 from aaax.cli import main
+from helpers import write_demo_package
 
 
 def test_strategy_app_runs_and_invokes_resources():
     strategy = Strategy("analyst-system", description="Fixture system.")
     strategy.channel(
         "events",
-        ref="psi://society/source-channels/channels/finance_ticks",
+        ref="lllm://society/source-channels/channels/finance_ticks",
     )
     strategy.tactic(
         "finance_baseline",
-        ref="psi://society/analyst-tactics/tactics/finance_baseline",
+        ref="lllm://society/analyst-tactics/tactics/finance_baseline",
         handler=lambda input_value, context=None: {
             "handled": input_value,
             "context": context or {},
@@ -51,10 +59,10 @@ def test_strategy_app_runs_and_invokes_resources():
     assert run_response.status_code == 200
     assert run_response.json()["output"]["resource_count"] == 2
     assert invoke_response.status_code == 200
-    assert invoke_response.json()["output"] == {
-        "handled": {"records": []},
-        "context": {},
-    }
+    # A tactic resource runs as /tactics/<name>/run runs it: with a CallContext.
+    assert invoke_response.json()["output"]["handled"] == {"records": []}
+    assert invoke_response.json()["output"]["context"]["metadata"] == {}
+    assert invoke_response.json()["output"]["context"]["endpoint"] == "run"
 
 
 def test_strategy_loader_from_directory(tmp_path: Path):
@@ -66,7 +74,7 @@ from aaax import Strategy
 
 def build_strategy():
     strategy = Strategy("loaded")
-    strategy.service("api", ref="psi://demo/app/services/api")
+    strategy.service("api", ref="lllm://demo/app/services/api")
     return strategy
 """.lstrip(),
         encoding="utf-8",
@@ -78,93 +86,45 @@ def build_strategy():
     assert strategy.resources[0].kind == "service"
 
 
-def test_package_directory_loads_manifest_resources_and_tactic(tmp_path: Path):
-    package = _write_demo_package(tmp_path / "analysis-pack")
+@pytest.mark.parametrize(
+    ("files", "loaded"),
+    [
+        (["aaax.py"], "aaax"),
+        (["shell.py"], "shell"),  # the name LLLM 0.3's `lllm shell` loaded
+        (["aaax.py", "shell.py"], "aaax"),
+        (["strategy.py", "aaax.py", "shell.py"], "strategy"),
+    ],
+)
+def test_strategy_files_load_before_the_package_manifest(tmp_path: Path, files, loaded):
+    for name in files:
+        (tmp_path / name).write_text(
+            f"from aaax import Strategy\nstrategy = Strategy({name[:-3]!r})\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "lllm.toml").write_text('[package]\nname = "pkg"\n', encoding="utf-8")
+
+    assert load_strategy(tmp_path).name == loaded
+
+
+def test_strategy_loader_names_what_a_directory_needs(tmp_path: Path):
+    with pytest.raises(
+        ValueError,
+        match="strategy directory must contain strategy.py, aaax.py, shell.py, or lllm.toml",
+    ):
+        load_strategy(tmp_path)
+
+
+def test_a_package_folder_and_its_lllm_toml_load_the_same_strategy(tmp_path: Path):
+    package = write_demo_package(tmp_path / "analysis-pack")
 
     strategy = load_strategy(package)
-    resources = {
-        (resource.kind, resource.name): resource
-        for resource in strategy.resources
-    }
-    client = TestClient(create_strategy_app(strategy))
 
     assert strategy.name == "analysis-pack"
-    assert strategy.metadata["package"] == "demo/analysis-pack"
-    assert strategy.metadata["card"]["summary"] == "Demo analyst package."
-    assert ("package", "analysis-pack") in resources
-    assert ("config", "default") in resources
-    assert ("schema", "record") in resources
-    assert ("tactic", "echo") in resources
-    assert ("channel", "events") in resources
-    assert ("snapshot", "latest") in resources
-    assert ("service", "api") in resources
-    assert ("run", "local") in resources
-    assert ("doc", "readme") in resources
-    assert ("example", "first") in resources
-    assert ("asset", "logo") in resources
-
-    response = client.post(
-        "/tactics/echo/run",
-        json={
-            "input": {"text": "hello"},
-            "context": {"request": "pkg-test"},
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json()["output"] == {
-        "echo": {"text": "hello"},
-        "context_type": "CallContext",
-        "metadata": {"request": "pkg-test"},
-    }
+    assert strategy.resources[0].ref == "lllm://demo/analysis-pack"
+    assert load_strategy(package / "lllm.toml").info() == strategy.info()
 
 
-def test_package_channels_append_and_query_events(tmp_path: Path):
-    package = _write_demo_package(tmp_path / "analysis-pack")
-    client = TestClient(create_strategy_app(load_strategy(package)))
-
-    append_response = client.post(
-        "/channels/events/events",
-        json={
-            "input": {
-                "payload": {"text": "first"},
-                "kind": "record",
-                "source": "pytest",
-            }
-        },
-    )
-    query_response = client.get("/channels/events/events?limit=10")
-
-    assert append_response.status_code == 200
-    assert append_response.json()["output"]["channel"] == "events"
-    assert append_response.json()["output"]["payload"] == {"text": "first"}
-    assert query_response.status_code == 200
-    assert query_response.json()["output"][0]["payload"] == {"text": "first"}
-    assert query_response.json()["output"][0]["kind"] == "record"
-
-
-def test_strategy_can_compose_prefixed_package_resources(tmp_path: Path):
-    package = _write_demo_package(tmp_path / "analysis-pack")
-    strategy = Strategy("composed").use_package(
-        package,
-        prefix="pkg",
-        store=tmp_path / "store",
-    )
-    client = TestClient(create_strategy_app(strategy))
-
-    assert any(resource.name == "pkg.echo" for resource in strategy.resources)
-    assert any(resource.name == "pkg.events" for resource in strategy.resources)
-
-    response = client.post(
-        "/tactics/pkg.echo/run",
-        json={"input": {"text": "prefixed"}},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["output"]["echo"] == {"text": "prefixed"}
-
-
-def test_tactic_only_package_does_not_require_lllm_or_sssn(
+def test_tactic_only_package_does_not_require_sssn(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -172,7 +132,7 @@ def test_tactic_only_package_does_not_require_lllm_or_sssn(
     real_import = builtins.__import__
 
     def blocked_optional_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name.split(".", 1)[0] in {"lllm", "sssn"}:
+        if level == 0 and name.split(".", 1)[0] == "sssn":
             raise ImportError(f"blocked optional integration: {name}")
         return real_import(name, globals, locals, fromlist, level)
 
@@ -184,14 +144,14 @@ def test_tactic_only_package_does_not_require_lllm_or_sssn(
         "/tactics/echo/run",
         json={
             "input": {"text": "hello"},
-            "context": {"request": "standalone"},
+            "context": {"metadata": {"request": "standalone"}},
         },
     )
 
     assert response.status_code == 200
     assert response.json()["output"] == {
         "echo": {"text": "hello"},
-        "context_type": "dict",
+        "context_type": "CallContext",
         "metadata": {"request": "standalone"},
     }
 
@@ -203,7 +163,7 @@ def test_cli_inspect_prints_strategy(tmp_path: Path, capsys):
 from aaax import Strategy
 
 strategy = Strategy("cli-demo")
-strategy.tactic("review", ref="psi://demo/pkg/tactics/review")
+strategy.tactic("review", ref="lllm://demo/pkg/tactics/review")
 """.lstrip(),
         encoding="utf-8",
     )
@@ -212,23 +172,23 @@ strategy.tactic("review", ref="psi://demo/pkg/tactics/review")
     out = capsys.readouterr().out
 
     assert "cli-demo" in out
-    assert "tactic review psi://demo/pkg/tactics/review" in out
+    assert "tactic review lllm://demo/pkg/tactics/review" in out
 
 
 def test_cli_inspect_prints_package_resources(tmp_path: Path, capsys):
-    package = _write_demo_package(tmp_path / "analysis-pack")
+    package = write_demo_package(tmp_path / "analysis-pack")
 
     assert main(["inspect", str(package)]) == 0
     out = capsys.readouterr().out
 
     assert "analysis-pack" in out
-    assert "tactic echo psi://demo/analysis-pack/tactics/echo" in out
-    assert "doc readme psi://demo/analysis-pack/docs/readme" in out
+    assert "tactic echo lllm://demo/analysis-pack/tactics/echo" in out
+    assert "doc readme lllm://demo/analysis-pack/docs/readme" in out
 
 
 def test_default_runner_exposes_strategy_pack():
     strategy = Strategy("empty")
-    strategy.package("analysts", ref="psi://society/analyst-tactics")
+    strategy.package("analysts", ref="lllm://society/analyst-tactics")
 
     client = TestClient(create_strategy_app(strategy))
     response = client.post("/run", json={"input": {"ok": True}})
@@ -238,105 +198,127 @@ def test_default_runner_exposes_strategy_pack():
     assert response.json()["output"]["resources"][0]["kind"] == "package"
 
 
-def _write_demo_package(root: Path) -> Path:
-    package_dir = root / "demo_pkg"
-    package_dir.mkdir(parents=True)
-    (package_dir / "__init__.py").write_text("", encoding="utf-8")
-    (package_dir / "schemas.py").write_text(
-        """
-class Record:
-    pass
-""".lstrip(),
-        encoding="utf-8",
-    )
-    (package_dir / "tactics.py").write_text(
-        """
-def echo(input_value, *, context=None):
-    metadata = getattr(context, "metadata", context or {})
-    context_type = type(context).__name__ if context is not None else None
-    return {
-        "echo": input_value,
-        "context_type": context_type,
-        "metadata": metadata,
+def test_mounted_tactics_get_the_full_service_surface():
+    from pydantic import BaseModel
+
+    from lllm import Tactic
+
+    class Text(BaseModel):
+        text: str
+
+    class Shout(Tactic[Text, Text]):
+        name = "shout"
+        input_type = Text
+        output_type = Text
+
+        def _run(self, input_value, *, context=None):
+            return Text(text=input_value.text.upper())
+
+    strategy = Strategy("served").add_tactic(Shout())
+    strategy.tactic("plain", handler=lambda input_value: {"seen": input_value})
+    client = TestClient(create_strategy_app(strategy))
+
+    assert [r["name"] for r in client.get("/tactics").json()] == ["shout", "plain"]
+    assert client.get("/tactics/shout/info").json()["name"] == "shout"
+    assert client.post("/tactics/shout/run", json={"input": {"text": "hi"}}).json()[
+        "output"
+    ] == {"text": "HI"}
+    # Streaming errors come back in the services error envelope.
+    stream = client.post("/tactics/shout/stream", json={"input": {"text": "go"}})
+    assert stream.status_code == 400
+    assert stream.json()["detail"]["error"]["type"] == "TacticUnsupportedError"
+    assert client.get("/tactics/shout/info").json()["description"] == ""
+    assert client.post("/tactics/plain/run", json={"input": 3}).json()["output"] == {
+        "seen": 3
     }
-""".lstrip(),
-        encoding="utf-8",
+
+
+# Without sssn, everything but the channel store works, and the store says
+# what to install.
+
+
+def _without_sssn(monkeypatch) -> None:
+    """Import sssn as if it were not installed."""
+
+    real_import = builtins.__import__
+
+    def import_without_sssn(name, globals=None, locals=None, fromlist=(), level=0):
+        if level == 0 and name.split(".", 1)[0] == "sssn":
+            raise ModuleNotFoundError("No module named 'sssn'", name="sssn")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", import_without_sssn)
+
+
+def test_a_package_with_channels_needs_sssn_only_for_its_store(
+    tmp_path: Path, monkeypatch, capsys
+):
+    package = write_demo_package(tmp_path / "analysis-pack")
+    _without_sssn(monkeypatch)
+    strategy = load_strategy(package)
+    missing = "Channel stores need the sssn package: pip install sssn"
+
+    assert main(["inspect", str(package)]) == 0
+    assert "channel events lllm://demo/analysis-pack/channels/events" in (
+        capsys.readouterr().out
     )
-    (root / "README.md").write_text("# Demo Package\n", encoding="utf-8")
-    (root / "examples").mkdir()
-    (root / "examples" / "first.py").write_text("print('demo')\n", encoding="utf-8")
-    (root / "assets").mkdir()
-    (root / "assets" / "logo.txt").write_text("AAAX\n", encoding="utf-8")
-    (root / "psi.toml").write_text(
-        """
-[package]
-psi_version = "0.1"
-org = "demo"
-name = "analysis-pack"
-version = "0.1.0"
-kind = "app"
-primary = "runs.local"
-description = "Demo package."
+    echoed = asyncio.run(strategy.invoke_resource("echo", {"text": "hi"}))
+    assert echoed["echo"] == {"text": "hi"}
+    with pytest.raises(ImportError, match=missing):
+        asyncio.run(strategy.invoke_resource("events", {"op": "append", "payload": 1}))
+    with pytest.raises(ImportError, match=missing):
+        create_strategy_app(strategy)
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: pytest.fail("serve started"))
+    with pytest.raises(SystemExit) as exit_info:
+        main(["serve", str(package)])
+    assert exit_info.value.code == 2
+    assert f"error: {missing}" in capsys.readouterr().err
+    assert not (package / ".lllm").exists()
 
-[card]
-summary = "Demo analyst package."
-tags = ["analysis", "demo"]
-suggested_commands = ["aaax serve ."]
 
-[config]
-description = "Runtime defaults."
-schema = { mode = "string" }
-defaults = { mode = "demo" }
+class _ChannelExists(Exception):
+    error_type = "ChannelExistsError"
 
-[schemas.record]
-entry = "demo_pkg.schemas:Record"
-description = "Record schema."
 
-[tactics.echo]
-entry = "demo_pkg.tactics:echo"
-runtime = "python"
-input = "schemas.record"
-output = "schemas.record"
-description = "Echo tactic."
-examples = [{ input = { text = "hello" } }]
+class _MemoryStore:
+    """A store that is not an sssn store: channels and events in memory."""
 
-[channels.events]
-form = "log"
-description = "Event stream."
+    def __init__(self):
+        self.channels: dict[str, dict] = {}
+        self.events: list[dict] = []
 
-[snapshots.latest]
-channel = "events"
-description = "Latest event."
+    def create_channel(self, channel):
+        if channel["name"] in self.channels:
+            raise _ChannelExists(channel["name"])
+        self.channels[channel["name"]] = dict(channel)
+        return self.channels[channel["name"]]
 
-[services.api]
-tactic = "echo"
-transport = "fastapi"
-description = "HTTP service."
-subscribes = ["events"]
-publishes = ["events"]
+    def get_channel(self, name):
+        return self.channels[name]
 
-[runs.local]
-tactics = ["echo"]
-channels = ["events"]
-services = ["api"]
-snapshots = ["latest"]
-description = "Local run."
+    def append_event(self, event):
+        self.events.append(dict(event))
+        return self.events[-1]
 
-[docs.readme]
-path = "README.md"
-title = "README"
+    def query_events(self, name, *, after_cursor=0, limit=100, kind=None):
+        events = [event for event in self.events if event["channel"] == name]
+        return events[after_cursor:][:limit]
 
-[examples.first]
-path = "examples/first.py"
-command = "python examples/first.py"
 
-[assets.logo]
-path = "assets/logo.txt"
-media_type = "text/plain"
-""".lstrip(),
-        encoding="utf-8",
-    )
-    return root
+def test_an_attached_store_that_is_not_an_sssn_store_needs_no_sssn(monkeypatch):
+    store = _MemoryStore()
+    store.create_channel({"name": "log", "description": "Made earlier."})
+    _without_sssn(monkeypatch)
+    strategy = Strategy("memory").attach_store(store)
+    strategy.channel("log").channel("notes")
+
+    appended = asyncio.run(strategy.invoke_resource("log", {"op": "append", "payload": 1}))
+    queried = asyncio.run(strategy.invoke_resource("log", {"op": "query"}))
+
+    assert appended["source"] == "aaax"
+    assert [event["payload"] for event in queried] == [1]
+    assert store.channels["log"]["description"] == "Made earlier."
+    assert sorted(store.channels) == ["log", "notes"]
 
 
 def _write_tactic_only_package(root: Path) -> Path:
@@ -356,10 +338,10 @@ def echo(input_value, *, context=None):
 """.lstrip(),
         encoding="utf-8",
     )
-    (root / "psi.toml").write_text(
+    (root / "lllm.toml").write_text(
         """
 [package]
-psi_version = "0.1"
+manifest_version = "0.1"
 org = "demo"
 name = "standalone-pack"
 version = "0.1.0"
