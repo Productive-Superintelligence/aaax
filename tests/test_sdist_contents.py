@@ -29,6 +29,7 @@ def test_sdist_includes_docs_and_tutorials(tmp_path: Path):
         names = set(archive.getnames())
 
     required = [
+        "CHANGELOG.md",
         "README.md",
         "assets/aaax-logo-text-black.png",
         "assets/aaax-logo-text-white.png",
