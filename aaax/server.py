@@ -2,9 +2,9 @@
 
 A strategy app is assembled from lllm's own services: every tactic resource is
 mounted as a full tactic service at ``/tactics/<name>/`` (``run``, ``stream``,
-``info``, and custom endpoints), and a strategy with a channel store mounts the
-sssn store API at ``/network/``. The shell adds its own surface on top:
-``/strategy``, ``/resources``, channel shortcuts, and the strategy ``/run``.
+``info``, and custom endpoints), and a strategy with an sssn channel store
+mounts the sssn store API at ``/network/``. The shell adds its own surface on
+top: ``/strategy``, ``/resources``, channel shortcuts, and the strategy ``/run``.
 
 The shell routes report errors in the services error envelope,
 ``{"detail": {"error": {"type": ..., "message": ...}}}``: a resource named in
@@ -39,16 +39,23 @@ from lllm.services import (
 )
 
 from .models import StrategyRunRequest, StrategyRunResponse
-from .strategy import ResourceNotFoundError, Strategy, _imported_sssn, _require_sssn
+from .strategy import (
+    ResourceNotFoundError,
+    Strategy,
+    _imported_sssn,
+    _is_sssn_store,
+    _require_sssn,
+)
 
 
 def create_strategy_app(strategy: Strategy) -> FastAPI:
     """Expose a strategy as a FastAPI application.
 
     Building the app serves the strategy: it opens the strategy's store, which
-    creates the declared channels, and mounts it at ``/network/``. That needs
-    sssn 0.2 or newer: without it, a strategy with a store raises
-    ``ImportError``.
+    creates the declared channels, and mounts an sssn store (a package store
+    included) at ``/network/``. That needs sssn 0.2 or newer: without it, a
+    strategy with an sssn store raises ``ImportError``. A store that is not an
+    sssn store is not mounted, and needs no sssn.
     """
 
     from . import __version__
@@ -164,13 +171,16 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
 
     for name, tactic in strategy.tactics().items():
         app.mount(f"/tactics/{name}", create_tactic_app(tactic))
-    if strategy.store is not None:
+    if strategy.store is not None and _is_sssn_store(strategy.store):
         _require_sssn()
         from sssn.server import create_app as create_store_app
 
         strategy.store.open()
         # Mount the StrategyStore itself so channels declared later are created too.
         app.mount("/network", create_store_app(strategy.store))
+    elif strategy.store is not None:
+        # Another store has no /network/; serving it still creates its channels.
+        strategy.store.open()
     return app
 
 

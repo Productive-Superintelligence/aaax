@@ -356,6 +356,28 @@ def test_attaching_none_is_a_no_op_without_a_store_and_never_drops_one(tmp_path:
     assert strategy.store.same_as(store)
 
 
+def test_network_serves_the_strategy_store_only_if_it_is_an_sssn_store(tmp_path: Path):
+    class Notebook:
+        """A store that is not an sssn store."""
+
+        def __init__(self):
+            self.channels: list[str] = []
+
+        def create_channel(self, channel):
+            self.channels.append(channel["name"])
+
+    notebook = Notebook()
+    local = Strategy("local").channel("log").attach_store(LocalStore(tmp_path / "store"))
+    plain = Strategy("plain").channel("log").attach_store(notebook)
+
+    local_client = TestClient(create_strategy_app(local))
+    plain_client = TestClient(create_strategy_app(plain))
+
+    assert [channel["name"] for channel in local_client.get("/network/channels").json()] == ["log"]
+    assert plain_client.get("/network/channels").status_code == 404
+    assert notebook.channels == ["log"]
+
+
 def test_unbound_package_channels_stay_metadata_only(tmp_path: Path):
     store = LocalStore(tmp_path / "store")
     strategy = Strategy("meta").attach_store(store)

@@ -42,15 +42,17 @@ and package manifests, and plugs into the `lllm` command.
   raises `ImportError: Channel stores need the sssn package: pip install
   sssn` (`aaax serve` reports it as a usage error); with an `sssn` older
   than 0.2, it raises `ImportError: aaax needs sssn>=0.2: pip install -U
-  'aaax[channels]'`. A store that is not an SSSN store works without SSSN.
-- A strategy has one channel store, `strategy.store`, served with SSSN's
-  store API at `/network/`. Every channel resource without a handler, from a
-  package or from `strategy.channel()`, is backed by the store channel of
-  the same name. `attach_store()` sets the store; attaching a different one
-  raises `ValueError` instead of replacing it. Packages share it: the first
-  package with channels gives the strategy its store, at `store=` or
-  `<package>/.lllm/network`, and its channels are created under their
-  prefixed names.
+  'aaax[channels]'`. A store that is not an SSSN store works without SSSN,
+  and so does serving the strategy: only an SSSN store is mounted at
+  `/network/`.
+- A strategy has one channel store, `strategy.store`; an SSSN store is
+  served with SSSN's store API at `/network/`. Every channel resource
+  without a handler, from a package or from `strategy.channel()`, is backed
+  by the store channel of the same name. `attach_store()` sets the store;
+  attaching a different one raises `ValueError` instead of replacing it.
+  Packages share it: the first package with channels gives the strategy its
+  store, at `store=` or `<package>/.lllm/network`, and its channels are
+  created under their prefixed names.
 - The store is opened, and its channels created, on first use: when the
   app is built or a channel is used, never while building or inspecting a
   strategy.

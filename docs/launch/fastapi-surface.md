@@ -2,10 +2,10 @@
 
 `create_strategy_app(strategy)` exposes the shell as a FastAPI application.
 It is assembled from LLLM's services: every tactic resource is mounted as a
-full LLLM tactic service, and a strategy with a channel store mounts SSSN's
-store API. The shell adds its own routes on top. Requests and responses use
-Pydantic models, so the same shell can be called by an app, a local script, an
-agent, or another system in the loop.
+full LLLM tactic service, and a strategy with an SSSN channel store mounts
+SSSN's store API. The shell adds its own routes on top. Requests and
+responses use Pydantic models, so the same shell can be called by an app, a
+local script, an agent, or another system in the loop.
 
 Building the app serves the strategy: it imports package code and opens the
 channel store, which creates the declared channels. The app keeps the strategy
@@ -141,11 +141,13 @@ GET  /network/events?channel=...
 POST /network/events
 ```
 
-A strategy with a channel store mounts SSSN's store API at `/network/`:
-channels, events, subscriptions, artifacts, and snapshots, as
+A strategy whose channel store is an SSSN store (a package's store, or a
+`LocalStore` or `RemoteStore` you attach) mounts SSSN's store API at
+`/network/`: channels, events, subscriptions, artifacts, and snapshots, as
 [`sssn.create_app`](https://sssn.one/reference/http-api/) serves them. It
 works on the same store as the channel routes, and channels declared after the
-app is built are created there too.
+app is built are created there too. A store that is not an SSSN store backs
+the channel routes only.
 
 ## Errors
 

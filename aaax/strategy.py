@@ -243,7 +243,7 @@ class Strategy:
         )
 
     def attach_store(self, store: Any) -> "Strategy":
-        """Back channel resources with a store; it is served at ``/network/``.
+        """Back channel resources with a store; an sssn one is served at ``/network/``.
 
         A strategy has one store. Every channel resource without a handler is
         backed by the store channel of the same name, created in the store the
@@ -557,6 +557,22 @@ def _channel_exists(exc: Exception) -> bool:
         return True
     # A RemoteStore reports an existing channel as an HTTP 409 error.
     return getattr(exc, "error_type", None) == "ChannelExistsError"
+
+
+def _is_sssn_store(store: Any) -> bool:
+    """Whether ``store`` is an sssn store, such as a ``LocalStore``.
+
+    A :class:`StrategyStore` is one if it wraps one or has not opened its
+    folder yet, where it opens a ``LocalStore``. Telling never imports sssn:
+    an sssn store's class, or a class it inherits from, comes from sssn.
+    """
+
+    if isinstance(store, StrategyStore):
+        if store._store is None:
+            return True
+        store = store._store
+    modules = (str(getattr(cls, "__module__", "")) for cls in type(store).__mro__)
+    return any(module.partition(".")[0] == "sssn" for module in modules)
 
 
 def _require_sssn() -> None:

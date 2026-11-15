@@ -390,6 +390,22 @@ def test_an_attached_store_that_is_not_an_sssn_store_needs_no_sssn(monkeypatch):
     assert sorted(store.channels) == ["log", "notes"]
 
 
+def test_serving_a_store_that_is_not_an_sssn_store_needs_no_sssn(monkeypatch):
+    store = _MemoryStore()
+    _without_sssn(monkeypatch)
+    strategy = Strategy("memory").channel("log").attach_store(store)
+
+    client = TestClient(create_strategy_app(strategy))
+
+    assert sorted(store.channels) == ["log"]  # building the app opened the store
+    appended = client.post("/channels/log/events", json={"input": {"payload": 1}})
+    queried = client.get("/channels/log/events")
+    assert appended.status_code == 200
+    assert [event["payload"] for event in queried.json()["output"]] == [1]
+    # sssn's store API serves sssn stores only.
+    assert client.get("/network/channels").status_code == 404
+
+
 def _write_tactic_only_package(root: Path) -> Path:
     package_dir = root / "demo_pkg"
     package_dir.mkdir(parents=True)

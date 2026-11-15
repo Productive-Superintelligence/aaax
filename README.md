@@ -139,7 +139,8 @@ Useful endpoints:
 - `GET /channels/{name}/events`
 - `POST /channels/{name}/events`
 - `/tactics/{name}/...`: the LLLM tactic service (`run`, `stream`, `info`)
-- `/network/...`: the SSSN store API, when the strategy has a channel store
+- `/network/...`: the SSSN store API, when the strategy's channel store is an
+  SSSN store
 
 Errors come back in LLLM's services error envelope.
 

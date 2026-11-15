@@ -123,8 +123,8 @@ app = create_strategy_app(strategy)
 
 The app stores the original strategy at `app.state.aaax_strategy`. Building it
 mounts every tactic with LLLM's `create_tactic_app` and, for a strategy with a
-store, opens the store and mounts SSSN's store API; without SSSN installed,
-that raises `ImportError`.
+store, opens the store and, if it is an SSSN store, mounts SSSN's store API;
+without SSSN installed, that raises `ImportError`.
 
 ## Command Line
 

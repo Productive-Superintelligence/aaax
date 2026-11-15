@@ -2,7 +2,7 @@
 
 AAAX exposes the shell surface as JSON endpoints through FastAPI. The app is
 built from LLLM's services: each tactic is a mounted LLLM tactic service, and
-a strategy with a channel store mounts SSSN's store API.
+a strategy with an SSSN channel store mounts SSSN's store API.
 
 ## Envelopes
 
@@ -70,7 +70,7 @@ context, and responses are `{"output": ..., "request_id": ..., "tactic": ...}`.
 
 `/network/...`
 : SSSN's store API (channels, events, subscriptions, artifacts, snapshots),
-  when the strategy has a channel store.
+  when the strategy's channel store is an SSSN store.
 
 ## Errors
 
