@@ -11,33 +11,31 @@ that mounts several packages or adds a top-level `/run` command.
 python -m pip install aaax
 ```
 
-For package manifest inspection without tactic or channel bridges:
+AAAX is built on LLLM: this installs `lllm-core` with its FastAPI server and
+adds `lllm shell` to the `lllm` command. From the LLLM side,
+`pip install "lllm-core[shell]"` installs the same thing.
+
+Channel resources are stored by SSSN. The package below declares a channel, so
+install the `channels` extra to serve it:
 
 ```bash
-python -m pip install "aaax[packages]"
-```
-
-For full PSI composition with optional LLLM tactics and SSSN channels:
-
-```bash
-python -m pip install "aaax[integrations]"
+python -m pip install "aaax[channels]"
 ```
 
 ## Mount And Serve A Package
 
-Create a minimal package:
+Create a minimal LLLM package:
 
 ```text
 analyst-pack/
-  psi.toml
+  lllm.toml
   demo/
     __init__.py
     tactics.py
 ```
 
-```toml title="analyst-pack/psi.toml"
+```toml title="analyst-pack/lllm.toml"
 [package]
-psi_version = "0.1"
 org = "demo"
 name = "analyst-pack"
 version = "0.1.0"
@@ -78,13 +76,24 @@ aaax inspect analyst-pack
 aaax serve analyst-pack --port 8400
 ```
 
+`lllm shell inspect analyst-pack` and `lllm shell serve analyst-pack` run the
+same commands.
+
 Call it:
 
 ```bash
 curl -X POST http://127.0.0.1:8400/tactics/echo/run \
   -H 'content-type: application/json' \
-  -d '{"input": {"text": "hello"}, "context": {"request": "quickstart"}}'
+  -d '{"input": {"text": "hello"}, "context": {"metadata": {"request": "quickstart"}}}'
 ```
+
+```json
+{"output": {"echo": {"text": "hello"}, "metadata": {"request": "quickstart"}}, "request_id": "...", "tactic": "echo"}
+```
+
+The tactic route is LLLM's tactic service: `context` has the shape of an LLLM
+`CallContext`, and the tactic receives one. Put your own values in its
+`metadata`; other keys that are not `CallContext` fields are dropped.
 
 ## Write A Shell Script
 
@@ -117,8 +126,9 @@ def build_strategy() -> Strategy:
 aaax serve strategy.py --port 8400
 ```
 
-Prefixes keep mounted names distinct while preserving original `psi://` refs in
-metadata.
+Prefixes keep mounted names distinct while preserving original `lllm://` refs
+in metadata. A strategy can also mount LLLM tactics directly with
+`add_tactic`; see [Use with LLLM](guides/lllm.md).
 
 ## Inspect Before Serving
 
@@ -129,4 +139,5 @@ aaax inspect strategy.py --json
 
 Inspection is the shell habit: check the local names before you run anything.
 Those names become `/resources/{name}/invoke`, `/tactics/{name}/run`, and
-`/channels/{name}/events`.
+`/channels/{name}/events`. Inspecting a package neither imports its code nor
+creates its channel store; serving does both.

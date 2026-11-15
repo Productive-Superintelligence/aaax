@@ -13,16 +13,22 @@ GET /resources
 GET /packages
 GET /tactics
 GET /channels
+GET /tactics/{name}/info
+GET /openapi.json
 ```
 
 From those endpoints it can learn:
 
 - which packages are present;
-- which tactics are callable;
+- which tactics are callable, and the input and output schemas each one
+  validates;
 - which channels accept events;
 - which services are mapped to tactics;
 - where docs, examples, and assets live;
 - what package cards suggest about safety, latency, and commands.
+
+For a published package, the LLLM hub also renders an agent card with every
+ref and how to run the package: `lllm hub agent-card org/package`.
 
 ## What An Agent Can Do
 

@@ -145,7 +145,7 @@ Errors come back in LLLM's services error envelope.
 
 ## Upgrading
 
-AAAX 0.3 is the code LLLM 0.3 shipped as `lllm.shell`, back in its own
+AAAX 0.3 is the code LLLM 0.3 shipped as its shell module, back in its own
 package and built on `lllm-core`. `CHANGELOG.md` lists what changed from AAAX
 0.2: packages are `lllm.toml` packages with `lllm://` refs, tactics get the
 full LLLM service, request context is a `CallContext`, and channel stores live

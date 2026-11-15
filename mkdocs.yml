@@ -1,5 +1,5 @@
 site_name: AAAX
-site_description: PSI shell for inspecting, mounting, and serving package-shaped agent systems.
+site_description: Strategy shell for inspecting, mounting, and serving package-shaped agent systems, built on LLLM.
 site_url: https://aaax.one/
 repo_name: Productive-Superintelligence/aaax
 repo_url: https://github.com/Productive-Superintelligence/aaax
@@ -30,30 +30,29 @@ theme:
     - search.highlight
 
 nav:
-  - Overview:
-      - Overview: index.md
-      - Getting Started: getting-started.md
-      - Concepts:
-          - Strategies: concepts/strategies.md
-          - Package Composition: concepts/package-composition.md
-          - Shell Boundary: concepts/launch-boundary.md
-  - Strategy:
-      - Strategy: composition/index.md
-      - Strategy Resources: composition/strategy-resources.md
-      - PsiHub Packages: composition/psihub-packages.md
-      - Channels And Services: composition/channels-services.md
-  - Shell:
-      - Shell: launch/index.md
-      - CLI Shell: launch/cli-shell.md
-      - FastAPI Shell: launch/fastapi-surface.md
-      - Agentic Shell: launch/agent-handoff.md
   - Tutorials:
+      - Getting Started: getting-started.md
       - Package Level:
           - Serve A Package: tutorials/serve-package.md
           - Compose Packages: tutorials/compose-packages.md
       - Service Workflows:
           - Channel Events: tutorials/channel-events.md
           - Tactic Endpoint: tutorials/tactic-endpoint.md
+  - Strategy:
+      - Strategy: composition/index.md
+      - Concepts:
+          - Strategies: concepts/strategies.md
+          - Package Composition: concepts/package-composition.md
+          - Shell Boundary: concepts/launch-boundary.md
+      - Strategy Resources: composition/strategy-resources.md
+      - LLLM Packages: composition/packages.md
+      - Channels And Services: composition/channels-services.md
+  - Shell:
+      - Shell: launch/index.md
+      - CLI Shell: launch/cli-shell.md
+      - FastAPI Shell: launch/fastapi-surface.md
+      - Agentic Shell: launch/agent-handoff.md
+  - Use with LLLM: guides/lllm.md
   - Reference:
       - Python API: reference/python-api.md
       - CLI: reference/cli.md
@@ -64,9 +63,6 @@ extra:
   homepage: https://aaax.one/
   current_doc: aaax
   docs_switch:
-    - key: psi
-      title: Psi
-      url: https://prosi.io/docs/
     - key: lllm
       title: LLLM
       url: https://lllm.one/

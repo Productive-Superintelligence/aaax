@@ -8,11 +8,12 @@ caller.
 
 In the current surface, the shell does five things:
 
-- Load a strategy file or package manifest.
+- Load a strategy file or an LLLM package manifest.
 - List and name the resources that belong to the application.
-- Bind local handlers where the package provides local Python entrypoints.
-- Prepare channel storage for package channels.
-- Expose a FastAPI app with stable endpoints.
+- Bind local handlers where the package provides local Python entrypoints,
+  as LLLM tactics.
+- Back channel resources with one SSSN store.
+- Expose a FastAPI app with stable endpoints, built from LLLM's services.
 
 The agent-facing layer can build on this later by reading the same resource map,
 package cards, docs, examples, and service URLs.
@@ -29,9 +30,9 @@ AAAX does not own:
 - package storage;
 - long-term event retention.
 
-Those jobs belong to LLLM runtimes, SSSN stores, PsiHub, deployment platforms,
-and agent tools. AAAX keeps the shell boring enough that all of those systems
-can meet there.
+Those jobs belong to LLLM (runtimes, services, and the package hub), SSSN
+stores, deployment platforms, and agent tools. AAAX keeps the shell boring
+enough that all of those systems can meet there.
 
 ## Handoff Shape
 

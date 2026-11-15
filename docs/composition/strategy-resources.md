@@ -9,7 +9,7 @@ from aaax import StrategyResource
 resource = StrategyResource(
     kind="tactic",
     name="review",
-    ref="psi://demo/analyst-pack/tactics/review",
+    ref="lllm://demo/analyst-pack/tactics/review",
     entrypoint="demo.tactics:review",
     description="Review one record batch.",
     metadata={"runtime": "python"},
@@ -24,10 +24,12 @@ resource = StrategyResource(
   and `custom`.
 
 `name`
-: The local name used in the shell and HTTP paths.
+: The local name used in the shell and HTTP paths. It is unique in the
+  strategy and a path segment: no whitespace, `/`, `:`, `\`, or `%`, and not
+  `.` or `..`.
 
 `ref`
-: The stable package or service ref. Package imports preserve `psi://` refs.
+: The stable package or service ref. Package imports preserve `lllm://` refs.
 
 `entrypoint`
 : Optional Python import path. Tactics use this to bind local handlers.
@@ -44,6 +46,10 @@ resource = StrategyResource(
 The same package resource can have different local names in different shells:
 
 ```python
+from aaax import Strategy
+
+
+shell = Strategy("analysis-shell")
 shell.use_package("packages/review", prefix="analysts")
 ```
 
@@ -51,7 +57,7 @@ The tactic named `review` in the package becomes `analysts.review` locally, but
 its ref remains:
 
 ```text
-psi://demo/review/tactics/review
+lllm://demo/review/tactics/review
 ```
 
 This lets a shell compose multiple packages without rewriting their package
@@ -63,12 +69,29 @@ Resources are metadata by default. They become executable when AAAX stores a
 handler under the same local name:
 
 ```python
-strategy.tactic(
+shell.tactic(
     "echo",
-    ref="psi://demo/tools/tactics/echo",
+    ref="lllm://demo/tools/tactics/echo",
     handler=lambda input_value, context=None: {"echo": input_value},
 )
 ```
 
-Handlers may be synchronous or asynchronous. If they accept a `context` keyword,
-AAAX passes the request context.
+Handlers may be synchronous or asynchronous. A handler receives `context` only
+if it declares it (or `**kwargs`), and the input only if it has a positional
+parameter besides `context`.
+
+A tactic resource's handler is an LLLM tactic: a `Tactic` is used as it is, and
+a plain function is wrapped with `lllm.as_tactic`. It is served at
+`/tactics/{name}/` and receives the request context as an LLLM `CallContext`.
+`add_tactic` mounts an LLLM tactic and fills in the record from its info:
+
+```python
+from lllm import as_tactic
+
+
+shell.add_tactic(as_tactic(lambda text: text.upper(), name="shout"))
+```
+
+Other resources' handlers receive the context as a plain dict, and a channel
+resource without a handler is backed by the strategy's channel store (see
+[Channels And Services](channels-services.md)).
