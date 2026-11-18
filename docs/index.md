@@ -1,4 +1,4 @@
-# Advanced Autonomous Agent Executor (AAAX)
+# Advanced Autonomous Agent Executor
 
 <p class="psi-brand">
   <img src="assets/aaax-logo-text-black.png#only-light" alt="AAAX" />
@@ -7,121 +7,231 @@
 
 [aaax.one](https://aaax.one){ .psi-domain }
 
-Advanced Autonomous Agent Executor (AAAX) is the strategy shell for
-package-shaped agent systems, built on [LLLM](https://lllm.one/). It gives
-packages a place to become useful: inspect a manifest, mount its tactics and
-channels, bind local handlers, open a FastAPI surface, and hand the resulting
-environment to a human, script, coding agent, or another system.
+**AAAX** is the strategy shell of the LLLM family.
+[LLLM](https://lllm.one/) composes agents into tactics and
+[SSSN](https://sssn.one/) connects systems through channels, but an
+application is rarely one tactic: it is a few tactics, a package or two
+from the hub, and the channels between them. AAAX, built on LLLM, mounts
+all of them into one **strategy**, gives each part a name, and serves the
+strategy as a single FastAPI app.
 
-<div class="aaax-shell" aria-label="AAAX shell transcript">
-  <span><span class="aaax-shell__prompt">$</span> aaax inspect packages/analyst-pack</span>
-  <span><span class="aaax-shell__muted">analyst-pack:</span> Demo analyst package.</span>
-  <span><span class="aaax-shell__ok">package</span> analyst-pack lllm://demo/analyst-pack</span>
-  <span><span class="aaax-shell__ok">tactic</span> echo lllm://demo/analyst-pack/tactics/echo</span>
-  <span><span class="aaax-shell__ok">channel</span> events lllm://demo/analyst-pack/channels/events</span>
-  <span><span class="aaax-shell__prompt">$</span> aaax serve packages/analyst-pack --port 8400</span>
-  <span><span class="aaax-shell__muted">Uvicorn running on</span> http://127.0.0.1:8400</span>
-</div>
+## Why AAAX
 
-AAAX stays thin on purpose. LLLM owns tactics, services, and packages, from
-the `lllm.toml` manifest to the hub; SSSN owns semantic channels; agent tools
-own their reasoning loops. AAAX is the shell where those resources get named,
-mounted, served, and passed along.
+- **One API for the whole system.** A strategy's tactics, channels, and
+  packages are served by one app, next to routes that list what is there
+  and a [`/run`](strategies.md#the-runner) command of your own.
+- **Tactics keep their contract.** Each tactic is served by LLLM's own
+  tactic service, so its `run`, `stream`, and `info` routes work as they do
+  under [`lllm serve`](https://lllm.one/serving/).
+- **Packages mount in one call.** An LLLM package folder, from your repo or
+  the [LLLM Hub](https://lllm.one/publishing/), adds every resource its
+  `lllm.toml` declares ([Packages](packages.md)).
+- **Names are local, refs are stable.** Mount two packages that both have a
+  `triage` tactic under different prefixes, and each keeps its `lllm://`
+  ref ([Resources](resources.md)).
+- **Nothing runs until it is used.** Building or inspecting a strategy
+  imports no package code and creates no store, so `aaax inspect` reads a
+  package without running any of it.
+- **Channels share one store.** A strategy's channels live in one
+  [SSSN](https://sssn.one/) store, served at `/network/` next to the
+  strategy's own routes ([Channels](channels.md)).
 
-AAAX is LLLM-centric: a mounted tactic is an LLLM tactic served with LLLM's
-tactic service, a package is an LLLM package, and installing AAAX adds
-`lllm shell` to the `lllm` command. A `Strategy` can still be as small as a
-resource table with a few local handlers; SSSN joins only when the strategy
-has channels to store.
+## A first strategy
 
-<div class="psi-tiles">
-  <div class="psi-tile">
-    <strong>Inspect</strong>
-    Read a package or strategy and see the local command surface before serving it.
-  </div>
-  <div class="psi-tile">
-    <strong>Mount</strong>
-    Mount `lllm.toml` resources into one shell without erasing their `lllm://` refs.
-  </div>
-  <div class="psi-tile">
-    <strong>Pipe</strong>
-    Call tactics, append/query channels, and invoke resources through stable endpoints.
-  </div>
-  <div class="psi-tile">
-    <strong>Handoff</strong>
-    Preserve cards, docs, examples, assets, and service URLs for people and agents.
-  </div>
-</div>
+```python title="hello.py"
+from fastapi.testclient import TestClient
+from lllm import Tactic
 
-## Fast Path
+from aaax import Strategy, create_strategy_app
 
-Serve a package (`lllm shell serve` is the same command):
+
+class Triage(Tactic):
+    """Route a support ticket to a queue."""
+
+    name = "triage"
+
+    def call(self, text: str) -> str:
+        return "oncall" if "outage" in text.lower() else "support"
+
+
+strategy = Strategy("desk", description="The support desk as one API.")
+strategy.add_tactic(Triage())
+
+client = TestClient(create_strategy_app(strategy))
+body = {"input": "Total outage"}
+response = client.post("/tactics/triage/run", json=body)
+print(response.json()["output"])
+#> oncall
+```
+
+`Triage` is an ordinary [LLLM tactic](https://lllm.one/tactics/). Its
+`call()` is plain Python here, and a tactic whose agents call models mounts
+the same way. `add_tactic` mounts it under its name, `create_strategy_app`
+builds the FastAPI app, and `TestClient` calls the app in the same process.
+
+## A real strategy: tactics, a package, and a runner
+
+A strategy is for gathering parts that come from different places. This
+support desk uses a tactic of its own, a plain function, and a search
+tactic from a knowledge-base package, and answers each ticket through one
+`/run` command:
+
+```python title="desk.py"
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+from lllm import Tactic, as_tactic
+
+from aaax import Strategy, create_strategy_app
+
+Path("kb").mkdir(exist_ok=True)  # (1)!
+Path("kb/lllm.toml").write_text(
+    """
+[package]
+org = "acme"
+name = "knowledge-base"
+description = "Help articles for the support desk."
+
+[tactics.search]
+entry = "kb_search:search"
+description = "Find the help article for a ticket."
+"""
+)
+Path("kb/kb_search.py").write_text(
+    """
+ARTICLES = {
+    "refund": "Refunds reach your card in 5 business days.",
+    "outage": "Live status: status.acme.com.",
+}
+
+def search(text: str) -> str:
+    words = text.lower().split()
+    found = [body for key, body in ARTICLES.items() if key in words]
+    return found[0] if found else "No article found."
+"""
+)
+
+
+class Triage(Tactic):
+    """Route a support ticket to a queue."""
+
+    name = "triage"
+
+    def call(self, text: str) -> str:
+        return "oncall" if "outage" in text.lower() else "support"
+
+
+def redact(text: str) -> str:
+    """Hide email addresses."""
+    return " ".join("[email]" if "@" in w else w for w in text.split())
+
+
+strategy = Strategy("desk", description="The support desk as one API.")
+strategy.add_tactic(Triage())
+strategy.add_tactic(as_tactic(redact))  # (2)!
+strategy.use_package("kb", prefix="kb")  # (3)!
+
+
+@strategy.runner  # (4)!
+async def run(ticket: str) -> dict:
+    text = await strategy.invoke_resource("redact", ticket)
+    return {
+        "queue": await strategy.invoke_resource("triage", text),
+        "article": await strategy.invoke_resource("kb.search", text),
+        "ticket": text,
+    }
+
+
+client = TestClient(create_strategy_app(strategy))
+for resource in client.get("/resources").json():  # (5)!
+    print(resource["kind"], resource["name"], resource["ref"])
+    #> tactic triage None
+    #> tactic redact None
+    #> package kb.knowledge-base lllm://acme/knowledge-base
+    #> tactic kb.search lllm://acme/knowledge-base/tactics/search
+
+ticket = "Outage again. Write to ada@example.com"
+print(client.post("/run", json={"input": ticket}).json()["output"])  # (6)!
+"""
+{
+    'queue': 'oncall',
+    'article': 'Live status: status.acme.com.',
+    'ticket': 'Outage again. Write to [email]',
+}
+"""
+```
+
+1. A package is a folder with an `lllm.toml`, the format of the LLLM Hub.
+   The example writes one so that it runs anywhere; usually the folder
+   comes from your repo or the hub.
+2. `as_tactic` turns a function into a tactic, named after the function and
+   described by its docstring.
+3. Mounts every resource the package declares. The prefix keeps its names
+   apart from yours, so its `search` tactic is `kb.search` here. Its code is
+   imported when the strategy is served, not when it is built.
+4. The runner is the strategy's own command, `POST /run`. It calls the other
+   resources by their local names.
+5. `GET /resources` lists the strategy's table: each resource's kind, local
+   name, and ref. The package's resources keep their `lllm://` refs,
+   whatever they are called here.
+6. The `/run` response also names the strategy and carries metadata;
+   `output` is what the runner returned.
+
+Each tactic still has its own routes: `POST /tactics/kb.search/run` runs the
+package's search alone, with LLLM's request and response envelopes.
+
+## Serve it
+
+`aaax serve` loads the file's `strategy` and runs the app with Uvicorn:
 
 ```bash
-aaax serve packages/analyst-pack --port 8400
+aaax serve desk.py --port 8400
+curl -X POST localhost:8400/run -H 'content-type: application/json' \
+  -d '{"input": "Outage again. Write to ada@example.com"}'
 ```
 
-Call a tactic:
+You get `POST /run`, `/tactics/{name}/run`, `/stream`, and `/info` for every
+tactic, `GET /resources` and `/strategy`, and OpenAPI docs at `/docs`.
+`lllm shell serve desk.py` is the same command. See [Serving](serving.md).
 
-```bash
-curl -X POST http://127.0.0.1:8400/tactics/echo/run \
-  -H 'content-type: application/json' \
-  -d '{"input": {"text": "hello"}, "context": {"metadata": {"request": "demo"}}}'
-```
+## How the pieces fit
 
-Write and read a channel:
+AAAX treats an application as a table of named parts behind one API:
 
-```bash
-curl -X POST http://127.0.0.1:8400/channels/events/events \
-  -H 'content-type: application/json' \
-  -d '{"input": {"kind": "record", "payload": {"text": "hello"}}}'
+- **Strategy is the application.** It has a name, a description, its
+  resources, and an optional runner behind `/run`.
+- **Resource is a named part.** A tactic, channel, package, service, doc,
+  or another kind, with a local name in this strategy and a stable ref.
+- **Handler makes a resource callable.** A tactic resource runs an LLLM
+  tactic, other resources call plain Python, and a channel without a
+  handler is backed by the strategy's store.
+- **The app is the boundary.** `create_strategy_app` serves tactics with
+  LLLM's tactic service, channels with SSSN's store API, and the table with
+  routes of its own.
 
-curl 'http://127.0.0.1:8400/channels/events/events?limit=10'
-```
+[How AAAX works](concepts.md) explains the model in one page, and each part
+has its own guide.
 
-## Shape
+## Next steps
 
-```mermaid
-flowchart LR
-  A["LLLM package"] --> B["AAAX shell"]
-  C["strategy.py"] --> B
-  B --> D["resource table"]
-  B --> E["FastAPI surface"]
-  E --> F["LLLM tactic services"]
-  E --> G["SSSN channel store"]
-  D --> H["human, agent, or system handoff"]
-```
+- [Install AAAX](install.md).
+- [Build a strategy](strategies.md), and learn how its
+  [resources](resources.md) are named and called.
+- [Mount packages](packages.md) from a folder or the LLLM Hub.
+- Add [channels](channels.md), then [serve](serving.md) the result.
+- Hand a strategy to [agents](agents.md).
+- Browse complete [examples](examples/index.md).
 
-AAAX treats a package like something you mount into a shell session. The local
-name can change, but the package ref remains stable. A caller can list what is
-mounted, run one tactic, append an event, invoke a service, or call the shell's
-top-level `/run` command. That caller can be a person, an app, an agent, or the
-next system in a larger loop.
+## The LLLM family
 
-## What AAAX Owns
+- **[LLLM](https://lllm.one/)** (`pip install lllm-core`) builds tactics:
+  programs whose agents call models, each typed and served on its own.
+- **[LLLM Hub](https://lllm.one/hub/)** hosts packages, each described by
+  one `lllm.toml`, which AAAX mounts in one call.
+- **[SSSN](https://sssn.one/)** (`pip install sssn`) adds channels: events,
+  artifacts, and snapshots in stores that connect systems.
+- **AAAX** (`pip install aaax`) mounts tactics, packages, and channels into
+  a strategy and serves it as one API.
 
-- `Strategy`, `StrategyResource`, and the shell's mounted resource table.
-- Pydantic request, response, resource, and strategy description models.
-- Loading `strategy.py`, `module:factory`, package folders, and direct
-  `lllm.toml` files.
-- Mounting LLLM package resources into one local namespace.
-- Serving every mounted tactic with LLLM's tactic service.
-- Backing channel resources with one SSSN store per strategy.
-- Serving the shell through FastAPI, the `aaax` CLI, and `lllm shell`.
-
-## What Stays Outside
-
-- Tactic runtimes, LLM provider execution, tool policy, traces, and evals: LLLM.
-- Package manifests, validation, publishing, and the hub: LLLM.
-- Channel storage, subscriptions, and stream processing: SSSN.
-- Durable production storage, deployment, queueing, and service orchestration.
-- Coding-agent behavior itself. AAAX gives agents a shell surface; it does not
-  decide how they reason.
-
-## Next
-
-- Start with [Getting Started](getting-started.md).
-- Learn the model in [Strategies](concepts/strategies.md).
-- Mount packages in [LLLM Packages](composition/packages.md).
-- See how AAAX fits LLLM and SSSN in [Use with LLLM](guides/lllm.md).
-- Serve your first package in [Serve A Package](tutorials/serve-package.md).
+SSSN and AAAX are separate packages built on LLLM. Installing them adds
+`lllm network` and `lllm shell` to the `lllm` command.
