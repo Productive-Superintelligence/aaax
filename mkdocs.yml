@@ -25,38 +25,58 @@ theme:
     - navigation.tracking
     - toc.follow
     - content.code.copy
+    - content.code.annotate
     - content.tabs.link
     - search.suggest
     - search.highlight
 
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            show_if_no_docstring: false
+            filters: ["!^_"]
+            heading_level: 3
+
+hooks:
+  - scripts/docs_hooks.py
+
+validation:
+  links:
+    anchors: warn  # a link to a missing #heading fails the strict build
+
 nav:
-  - Tutorials:
-      - Getting Started: getting-started.md
-      - Package Level:
-          - Serve A Package: tutorials/serve-package.md
-          - Compose Packages: tutorials/compose-packages.md
-      - Service Workflows:
-          - Channel Events: tutorials/channel-events.md
-          - Tactic Endpoint: tutorials/tactic-endpoint.md
-  - Strategy:
-      - Strategy: composition/index.md
-      - Concepts:
-          - Strategies: concepts/strategies.md
-          - Package Composition: concepts/package-composition.md
-          - Shell Boundary: concepts/launch-boundary.md
-      - Strategy Resources: composition/strategy-resources.md
-      - LLLM Packages: composition/packages.md
-      - Channels And Services: composition/channels-services.md
-  - Shell:
-      - Shell: launch/index.md
-      - CLI Shell: launch/cli-shell.md
-      - FastAPI Shell: launch/fastapi-surface.md
-      - Agentic Shell: launch/agent-handoff.md
-  - Use with LLLM: guides/lllm.md
-  - Reference:
-      - Python API: reference/python-api.md
-      - CLI: reference/cli.md
-      - HTTP API: reference/http-api.md
+  - Get started:
+      - Introduction: index.md
+      - Installation: install.md
+      - How AAAX works: concepts.md
+  - Guide:
+      - Strategies: strategies.md
+      - Resources: resources.md
+      - Packages: packages.md
+      - Channels: channels.md
+      - Serving: serving.md
+      - Agents and handoff: agents.md
+  - Examples:
+      - examples/index.md
+  - API reference:
+      - api/index.md
+      - CLI: api/cli.md
+      - HTTP API: api/http-api.md
 
 extra:
   generator: false
