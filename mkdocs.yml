@@ -73,6 +73,8 @@ nav:
       - Agents and handoff: agents.md
   - Examples:
       - examples/index.md
+      - Support desk: examples/support-desk.md
+      - Two packages, one API: examples/two-packages.md
   - API reference:
       - api/index.md
       - CLI: api/cli.md

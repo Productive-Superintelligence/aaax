@@ -1,12 +1,14 @@
 # HTTP API
 
-AAAX exposes the shell surface as JSON endpoints through FastAPI. The app is
-built from LLLM's services: each tactic is a mounted LLLM tactic service, and
-a strategy with an SSSN channel store mounts SSSN's store API.
+`create_strategy_app(strategy)` serves a strategy as JSON endpoints through
+FastAPI. The app is built from LLLM's services: each tactic is a mounted
+LLLM tactic service, and a strategy with an SSSN channel store mounts SSSN's
+store API. [Serving](../serving.md) and [Channels](../channels.md) show
+these routes in use.
 
 ## Envelopes
 
-The shell routes (`/run`, `/resources/...`, `/channels/...`) take a
+The strategy's routes (`/run`, `/resources/...`, `/channels/...`) take a
 `StrategyRunRequest`:
 
 ```json
@@ -26,55 +28,40 @@ and return a `StrategyRunResponse`:
 }
 ```
 
+These routes read only `input` and `context`: other keys are ignored, so a
+body without `input` runs with the input `None`. `metadata` names the
+resource and the route (`resource` or `channel`), and is empty for `/run`.
+
 The tactic services under `/tactics/{name}/` use LLLM's service envelopes:
 requests are `{"input": ..., "context": {...}}` with a `CallContext`-shaped
 context, and responses are `{"output": ..., "request_id": ..., "tactic": ...}`.
+The `tactic` field is the tactic's own name, which can differ from `{name}`
+when the resource was renamed or prefixed.
 
 ## Endpoints
 
-`GET /health`
-: Returns `{"ok": true, "strategy": "<name>"}`.
+| Route | Returns or does |
+| --- | --- |
+| `GET /health` | `{"ok": true, "strategy": "<name>"}` |
+| `GET /strategy` | The `StrategyInfo` |
+| `GET /resources` | All resources |
+| `GET /packages` | Resources with kind `package` |
+| `GET /tactics` | Resources with kind `tactic` |
+| `GET /channels` | Resources with kind `channel` |
+| `POST /run` | Calls the strategy's runner |
+| `POST /resources/{name}/invoke` | Invokes any resource by local name: runs its tactic or handler, or uses its store channel with an `op` of `append`, `query`, or `info` |
+| `POST /channels/{name}/events` | Appends an event to a channel resource. The `input` is an object of event fields: `payload`, `kind` (default `event`), `source` (default `aaax`), `schema`, `metadata`, `correlation_id`, `parent_ids` |
+| `GET /channels/{name}/events` | Queries a channel resource: `?after_cursor=0&limit=100&kind=...` |
+| `POST /tactics/{name}/run`, `POST /tactics/{name}/stream`, `GET /tactics/{name}/info` | The mounted LLLM tactic service, with any custom tactic endpoints under the same prefix, and its own `/docs` and `/openapi.json` |
+| `/network/...` | SSSN's store API (channels, events, subscriptions, artifacts, snapshots), when the strategy's channel store is an SSSN store |
+| `GET /docs`, `GET /openapi.json` | FastAPI's interactive docs and OpenAPI document for the routes above, apart from the mounted apps |
 
-`GET /strategy`
-: Returns `StrategyInfo`.
-
-`GET /resources`
-: Returns all resources.
-
-`GET /packages`
-: Returns resources with kind `package`.
-
-`GET /tactics`
-: Returns resources with kind `tactic`.
-
-`GET /channels`
-: Returns resources with kind `channel`.
-
-`POST /run`
-: Calls the shell runner.
-
-`POST /resources/{name}/invoke`
-: Invokes any resource by local name: runs its tactic or handler, or uses its
-  store channel with an `op` of `append`, `query`, or `info`.
-
-`POST /channels/{name}/events`
-: Appends an event to a channel resource. The `input` is an object of event
-  fields: `payload`, `kind` (default `event`), `source` (default `aaax`),
-  `schema`, `metadata`, `correlation_id`, `parent_ids`.
-
-`GET /channels/{name}/events`
-: Queries a channel resource: `?after_cursor=0&limit=100&kind=...`.
-
-`POST /tactics/{name}/run`, `POST /tactics/{name}/stream`, `GET /tactics/{name}/info`
-: The mounted LLLM tactic service, with any custom tactic endpoints.
-
-`/network/...`
-: SSSN's store API (channels, events, subscriptions, artifacts, snapshots),
-  when the strategy's channel store is an SSSN store.
+A `{name}` under `/tactics/` that is not mounted gets Starlette's plain 404,
+`{"detail": "Not Found"}`.
 
 ## Errors
 
-The shell routes report errors in LLLM's services error envelope:
+The strategy's routes report errors in LLLM's services error envelope:
 
 ```json
 {
@@ -98,6 +85,8 @@ The shell routes report errors in LLLM's services error envelope:
 | Its own | An `HTTPException` from the runner or a handler keeps its status and plain `detail`; a channel store error keeps the store API's code (404 not found, 409 conflict, 400 otherwise). |
 | 500 | Anything else the runner or a handler raises. |
 
-A tactic resource gets the status codes of `POST /tactics/{name}/run` on both
-of its routes: 400 for `SchemaError` and `TacticUnsupportedError`, 500 for
-anything else.
+A body that does not validate is a 400 `SchemaError` with `endpoint` set to
+`null`. A tactic resource gets the status codes of `POST /tactics/{name}/run`
+on both of its routes: 400 for `SchemaError` and `TacticUnsupportedError`,
+500 for anything else. SSSN's routes under `/network/` use the same envelope
+with only `type` and `message`.

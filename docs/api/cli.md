@@ -1,9 +1,10 @@
 # CLI
 
-The `aaax` command is the shell entrypoint. It loads, inspects, and serves
-packages or strategy files. Installing AAAX also adds it to the LLLM command as
-`lllm shell`, and `python -m aaax` runs it too; all three are the same CLI, and
-usage and error messages name the command you typed.
+The `aaax` command loads, inspects, and serves packages and strategy
+files. Installing AAAX also adds it to the LLLM command as `lllm shell`,
+and `python -m aaax` runs it too; all three are the same CLI, and usage and
+error messages name the command you typed.
+[Serving](../serving.md#serve-from-the-command-line) shows it in use.
 
 ```bash
 aaax inspect TARGET [--json]
@@ -20,10 +21,18 @@ aaax inspect TARGET
 aaax inspect TARGET --json
 ```
 
-`TARGET` can be a strategy file, a package folder, a direct `lllm.toml`, a
-directory with `strategy.py` or `shell.py`, or a `module:attribute` value.
+`TARGET` can be:
+
+- a Python file that defines `build_strategy()` or `strategy`;
+- a directory, which loads its `strategy.py`, else its `shell.py`, else
+  the package in its `lllm.toml`;
+- an `lllm.toml` file, loaded as a strategy named after the package;
+- a `module:attribute` value, imported from the working directory: a
+  `Strategy`, or a function without parameters that returns one.
+
 Don't name a strategy file `aaax.py`: run in its folder, `lllm shell` and
 `python -m aaax` import that file in place of the `aaax` package and fail.
+`aaax` itself still loads one, with a `FutureWarning` to rename it.
 
 Text output lists resource kind, local name, and ref or entrypoint:
 
@@ -34,8 +43,9 @@ tactic echo lllm://demo/analysis-pack/tactics/echo
 channel events lllm://demo/analysis-pack/channels/events
 ```
 
-`--json` prints the full `StrategyInfo`. Inspecting a package neither imports
-its code nor creates its channel store, and needs no SSSN.
+`--json` prints the full `StrategyInfo`, with sorted keys. Inspecting a
+package neither imports its code nor creates its channel store, and needs
+no SSSN.
 
 ## Serve
 
@@ -50,13 +60,15 @@ Validation:
 - host must be a host name or address, not a URL;
 - port must be between `1` and `65535`;
 - log level must be one of `critical`, `debug`, `error`, `info`, `trace`, or
-  `warning`.
+  `warning`, in any case.
 
-A target that does not load, and a strategy with channels when SSSN is not
-installed or is older than 0.2, are usage errors (exit status `2`):
+A target that does not load, and a strategy whose channel store is an SSSN
+store (any package with channels, or an attached `LocalStore`) when SSSN is
+not installed or is older than 0.2, are usage errors (exit status `2`):
 
 ```text
 aaax: error: Channel stores need the sssn package: pip install sssn
+aaax: error: aaax needs sssn>=0.2: pip install -U 'aaax[channels]'
 ```
 
 ## Launch
@@ -65,8 +77,7 @@ aaax: error: Channel stores need the sssn package: pip install sssn
 aaax launch TARGET --port 8400
 ```
 
-`launch` is an alias for `serve` in the current public surface. It exists so the
-command family can grow without changing the shell habit: inspect, mount, serve.
+`launch` is an alias for `serve`, with the same options and defaults.
 
 ## Through LLLM
 
