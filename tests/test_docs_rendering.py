@@ -8,7 +8,8 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NAV_SECTIONS = ["Tutorials", "Strategy", "Shell", "Use with LLLM", "Reference"]
+NAV_SECTIONS = ["Get started", "Guide", "Examples", "API reference"]
+GUIDE_PAGES = ["strategies", "resources", "packages", "channels", "serving", "agents"]
 DOCS_SWITCH = [
     ("https://lllm.one/", "LLLM"),
     ("https://sssn.one/", "SSSN"),
@@ -43,8 +44,8 @@ def test_docs_use_strategy_shell_framing():
     sources = {
         "README": ROOT / "README.md",
         "home": ROOT / "docs" / "index.md",
-        "strategies": ROOT / "docs" / "concepts" / "strategies.md",
-        "launch": ROOT / "docs" / "concepts" / "launch-boundary.md",
+        "concepts": ROOT / "docs" / "concepts.md",
+        "strategies": ROOT / "docs" / "strategies.md",
         "package docstring": ROOT / "aaax" / "__init__.py",
         "package metadata": ROOT / "pyproject.toml",
         "metadata": ROOT / "mkdocs.yml",
@@ -74,7 +75,6 @@ def test_docs_build_with_shared_visual_contract(tmp_path: Path):
     for section in NAV_SECTIONS:
         assert section in index
     assert "Overview" not in index
-    assert "aaax-shell" in index
     assert "aaax-logo-text-black.png" in index
     assert "aaax-logo-text-white.png" in index
     assert "aaax-logo-text-black.png" in css
@@ -123,21 +123,20 @@ def test_docs_nav_sections_and_no_orphan_pages():
     config = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
     nav = config.split("\nnav:\n", 1)[1].split("\n\n", 1)[0]
 
-    # The header renders the top-level sections as tabs; the logo is the way
-    # home, so there is no Home section and index.md stays out of the nav.
+    # The header renders the top-level sections as tabs. The logo leads home,
+    # to the Introduction at the start of "Get started"; there is no Home tab.
     assert re.findall(r"^  - ([^:\n]+):", nav, re.M) == NAV_SECTIONS
     assert "homepage: https://aaax.one/" in config
     pages = nav_pages(config)
     docs = ROOT / "docs"
     assert [page for page in pages if not (docs / page).is_file()] == []
-    assert "index.md" not in pages
-    assert pages[0] == "getting-started.md"
+    assert pages[:3] == ["index.md", "install.md", "concepts.md"]
     all_pages = {
         path.relative_to(docs).as_posix()
         for path in docs.rglob("*.md")
         if "overrides" not in path.parts
     }
-    assert sorted(all_pages - set(pages)) == ["index.md"]
+    assert sorted(all_pages - set(pages)) == []
 
 
 def test_docs_header_has_section_tabs_and_switches_between_the_three_sites(tmp_path):
@@ -150,9 +149,8 @@ def test_docs_header_has_section_tabs_and_switches_between_the_three_sites(tmp_p
     ]
     for page in (
         "index.html",
-        "getting-started/index.html",
-        "guides/lllm/index.html",
-        "reference/cli/index.html",
+        "strategies/index.html",
+        "api/cli/index.html",
     ):
         html = (site_dir / page).read_text(encoding="utf-8")
         header = html.split('class="psi-header-nav"', 1)[1].split("</div>", 1)[0]
@@ -185,20 +183,23 @@ def test_public_text_uses_lllm_names():
         r"|PSI shell|aaax\[(?:integrations|packages|tactics)\]|\.sssn\b",
         re.IGNORECASE,
     )
-    # The deprecated lllm.shell path is named only where the docs explain it.
+    # The deprecated lllm.shell path is named only where the docs explain it,
+    # the upgrade note in install.md.
     old_module = re.compile(r"(?<![\w./])lllm\.shell\b")
 
     for path in text_paths:
         text = path.read_text(encoding="utf-8")
         match = gone.search(text)
         assert match is None, f"{path.relative_to(ROOT)} mentions {match.group(0)}"
-        if path != ROOT / "docs" / "guides" / "lllm.md":
+        if path != ROOT / "docs" / "install.md":
             match = old_module.search(text)
             assert match is None, f"{path.relative_to(ROOT)} mentions {match.group(0)}"
 
 
-def test_lllm_guide_covers_every_integration_point():
-    guide = (ROOT / "docs" / "guides" / "lllm.md").read_text(encoding="utf-8")
+def test_docs_cover_every_lllm_integration_point():
+    guide = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted((ROOT / "docs").glob("*.md"))
+    )
 
     for text in (
         "add_tactic",
@@ -273,3 +274,53 @@ def test_docs_local_asset_references_resolve():
                     )
 
     assert missing == []
+
+
+CODE_COLUMN = 76  # characters of the code font that fit the content column
+
+
+def test_docs_code_fits_the_code_column():
+    # Longer lines are cut off behind a horizontal scrollbar. Printed output
+    # (after `#>`, or in a `"""` block of its own) is exempt: it is what the
+    # program prints.
+    long_lines = []
+    for path in sorted((ROOT / "docs").rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"^([ \t]*)```([^\n]*)\n(.*?)^\1```", text, re.M | re.S):
+            if match.group(2).strip().startswith("mermaid"):
+                continue
+            quote = None
+            for line in match.group(3).splitlines():
+                stripped = line.strip()
+                if quote == "output":
+                    quote = None if stripped == '"""' else quote
+                    continue
+                if quote is None and stripped == '"""':
+                    quote = "output"
+                    continue
+                if quote == "doc" and stripped.endswith('"""'):
+                    quote = None
+                elif quote is None and stripped.startswith('"""') and not (
+                    len(stripped) >= 6 and stripped.endswith('"""')
+                ):
+                    quote = "doc"
+                if stripped.startswith("#>"):
+                    continue
+                if len(line) - len(match.group(1)) > CODE_COLUMN:
+                    long_lines.append(f"{path.relative_to(ROOT)}: {stripped[:70]}")
+    assert long_lines == []
+
+
+def test_guide_pages_show_a_runnable_example_with_its_output():
+    # The docs teach by example: every guide page has a Python example that
+    # tests/test_docs_examples.py runs, with the printed output it checks.
+    for page in ["index", "concepts", *GUIDE_PAGES]:
+        text = (ROOT / "docs" / f"{page}.md").read_text(encoding="utf-8")
+        checked = [
+            body
+            for info, body in re.findall(r"^```([^\n]*)\n(.*?)^```", text, re.M | re.S)
+            if info.startswith("python")
+            and 'test="skip"' not in info
+            and ("#>" in body or '\n"""' in body)
+        ]
+        assert checked, f"docs/{page}.md has no runnable example with checked output"

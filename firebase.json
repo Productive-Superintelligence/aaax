@@ -4,8 +4,27 @@
       "target": "docs",
       "public": "site",
       "redirects": [
-        { "source": "/composition/psihub-packages/", "destination": "/composition/packages/", "type": 301 },
-        { "source": "/composition/psihub-packages", "destination": "/composition/packages/", "type": 301 }
+        { "source": "/getting-started{,/**}", "destination": "/install/", "type": 301 },
+        { "source": "/tutorials/serve-package{,/**}", "destination": "/packages/", "type": 301 },
+        { "source": "/tutorials/compose-packages{,/**}", "destination": "/packages/", "type": 301 },
+        { "source": "/tutorials/channel-events{,/**}", "destination": "/channels/", "type": 301 },
+        { "source": "/tutorials/tactic-endpoint{,/**}", "destination": "/serving/", "type": 301 },
+        { "source": "/composition/strategy-resources{,/**}", "destination": "/resources/", "type": 301 },
+        { "source": "/composition/psihub-packages{,/**}", "destination": "/packages/", "type": 301 },
+        { "source": "/composition/packages{,/**}", "destination": "/packages/", "type": 301 },
+        { "source": "/composition/channels-services{,/**}", "destination": "/channels/", "type": 301 },
+        { "source": "/composition{,/}", "destination": "/strategies/", "type": 301 },
+        { "source": "/concepts/strategies{,/**}", "destination": "/strategies/", "type": 301 },
+        { "source": "/concepts/package-composition{,/**}", "destination": "/packages/", "type": 301 },
+        { "source": "/concepts/launch-boundary{,/**}", "destination": "/concepts/", "type": 301 },
+        { "source": "/launch/cli-shell{,/**}", "destination": "/api/cli/", "type": 301 },
+        { "source": "/launch/fastapi-surface{,/**}", "destination": "/serving/", "type": 301 },
+        { "source": "/launch/agent-handoff{,/**}", "destination": "/agents/", "type": 301 },
+        { "source": "/launch{,/}", "destination": "/serving/", "type": 301 },
+        { "source": "/guides/lllm{,/**}", "destination": "/concepts/", "type": 301 },
+        { "source": "/reference/python-api{,/**}", "destination": "/api/", "type": 301 },
+        { "source": "/reference/http-api{,/**}", "destination": "/api/http-api/", "type": 301 },
+        { "source": "/reference/cli{,/**}", "destination": "/api/cli/", "type": 301 }
       ]
     }
   ]

@@ -26,14 +26,12 @@ def test_firebase_json_deploys_the_built_docs_to_aaax_one():
     assert rc["projects"] == {"default": "prosi-501105"}
     assert rc["targets"]["prosi-501105"]["hosting"] == {"docs": ["aaax-one"]}
     assert [(entry["target"], entry["public"]) for entry in hosting] == [("docs", "site")]
-    # AAAX 0.2's PsiHub Packages page is LLLM Packages now.
-    moved = {"location": "/composition/packages/", "statusCode": 301}
-    assert script.serving_config(hosting[0]) == {
-        "redirects": [
-            {"glob": "/composition/psihub-packages/", **moved},
-            {"glob": "/composition/psihub-packages", **moved},
-        ],
-    }
+    config = script.serving_config(hosting[0])
+    assert set(config) == {"redirects"}  # pages of the old docs move to new ones
+    assert all(rule["statusCode"] == 301 for rule in config["redirects"])
+    assert all(rule["location"].startswith("/") for rule in config["redirects"])
+    # AAAX 0.2's PsiHub Packages page is the Packages guide now.
+    assert {"glob": "/composition/psihub-packages{,/**}", "location": "/packages/", "statusCode": 301} in config["redirects"]
 
 
 def _docs_page(url: str) -> Path:
@@ -47,7 +45,8 @@ def test_redirects_lead_from_a_page_that_is_gone_to_one_that_exists():
     (hosting,) = json.loads((ROOT / "firebase.json").read_text())["hosting"]
 
     for rule in hosting["redirects"]:
-        assert not _docs_page(rule["source"]).exists(), rule
+        source = rule["source"].split("{", 1)[0]  # "/old{,/**}" is /old and below
+        assert not _docs_page(source).exists(), rule
         assert _docs_page(rule["destination"]).is_file(), rule
 
 

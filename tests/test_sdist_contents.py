@@ -9,7 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_sdist_includes_docs_and_tutorials(tmp_path: Path):
+def test_sdist_includes_docs_and_examples(tmp_path: Path):
     pytest.importorskip("build")
     dist_dir = tmp_path / "dist"
     result = subprocess.run(
@@ -45,24 +45,23 @@ def test_sdist_includes_docs_and_tutorials(tmp_path: Path):
         "docs/index.md",
         "docs/assets/aaax-logo-text-black.png",
         "docs/assets/aaax-logo-text-white.png",
-        "docs/composition/index.md",
-        "docs/composition/packages.md",
-        "docs/concepts/strategies.md",
-        "docs/guides/lllm.md",
+        "docs/strategies.md",
+        "docs/packages.md",
+        "docs/concepts.md",
+        "docs/serving.md",
         "docs/javascripts/mermaid-init.20260629.js",
         "docs/javascripts/vendor/mermaid.min.js",
         "docs/javascripts/vendor/mermaid-LICENSE.txt",
-        "docs/launch/cli-shell.md",
-        "docs/launch/fastapi-surface.md",
-        "docs/launch/agent-handoff.md",
-        "docs/launch/index.md",
+        "docs/agents.md",
+        "docs/channels.md",
         "docs/overrides/partials/header.html",
-        "docs/reference/cli.md",
+        "docs/api/index.md",
+        "docs/api/cli.md",
+        "docs/api/http-api.md",
         "docs/stylesheets/custom.20260702.css",
-        "docs/tutorials/channel-events.md",
-        "docs/tutorials/compose-packages.md",
-        "docs/tutorials/serve-package.md",
-        "docs/tutorials/tactic-endpoint.md",
+        "docs/examples/index.md",
+        "docs/examples/support-desk.md",
+        "scripts/docs_hooks.py",
     ]
     missing = [path for path in required if f"{root}/{path}" not in names]
 
