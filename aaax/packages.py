@@ -81,10 +81,12 @@ def add_package(
     :func:`aaax.load_strategy` loads a strategy file (its top level and its
     ``build_strategy()``): then every relative package path, given by the
     file or by helper code it calls, is relative to the file's folder, as if
-    built from ``Path(__file__).parent``. A path that is not in the file's
-    folder but is in the working directory, where AAAX 0.3 looked, is still
-    used, with a ``FutureWarning``: a future minor release looks in the
-    file's folder only.
+    built from ``Path(__file__).parent``. AAAX 0.3 looked in the working
+    directory, so a path that leads to a package (a manifest file, or a
+    folder with an lllm.toml) only from there, or to a different package
+    from each place, still uses the working directory's, with a
+    ``FutureWarning``: a future minor release looks in the file's folder
+    only.
     """
 
     path = _package_path(path)
@@ -450,10 +452,14 @@ def _package_path(path: str | Path) -> str | Path:
     """``path`` as the strategy file being loaded means it.
 
     Outside a strategy file, ``path`` is returned as it is. In one, a
-    relative ``path`` is resolved against the file's folder; one that exists
-    only relative to the working directory, as AAAX 0.3 resolved it, is
-    resolved there, with a ``FutureWarning``. The result is absolute, so the
-    package that was found is the one that loads.
+    relative ``path`` is looked up in the file's folder and in the working
+    directory, where AAAX 0.3 looked; a place counts only if it holds a
+    manifest (``path`` is a manifest file, or a folder with an lllm.toml).
+    The file's folder is used when only it holds one, or both hold the same
+    one; the working directory when only it holds one, or each holds a
+    different one (AAAX 0.3's choice), with a ``FutureWarning``; and the
+    file's folder when neither does, so the error names it. The result is
+    absolute, so the package that was found is the one that loads.
     """
 
     folder = _strategy_folder.get()
@@ -464,13 +470,24 @@ def _package_path(path: str | Path) -> str | Path:
         return path
     in_folder = folder / text
     in_working_directory = Path(text).absolute()
-    if in_folder.exists() or not in_working_directory.exists():
+    folder_manifest = _manifest_file(in_folder)
+    working_manifest = _manifest_file(in_working_directory)
+    if not working_manifest.is_file() or working_manifest == folder_manifest:
         return in_folder
+    if folder_manifest.is_file():
+        found = (
+            f"names one package in the working directory ({in_working_directory}) and "
+            f"another in the strategy file's folder ({in_folder}); as in AAAX 0.3, the "
+            "working directory's is used"
+        )
+    else:
+        found = (
+            f"was found in the working directory ({in_working_directory}), not in the "
+            f"strategy file's folder ({folder})"
+        )
     warnings.warn(
-        f"package path {text!r} was found in the working directory "
-        f"({in_working_directory}), not in the strategy file's folder ({folder}); "
-        "a future minor release of AAAX looks in the file's folder only. Make the "
-        "path relative to the file's folder, or absolute.",
+        f"package path {text!r} {found}. A future minor release of AAAX looks in the "
+        "file's folder only: make the path relative to the file's folder, or absolute.",
         FutureWarning,
         stacklevel=_stacklevel_outside_aaax(),
     )

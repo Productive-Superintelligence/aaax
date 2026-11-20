@@ -267,14 +267,16 @@ package billing.billing lllm://demo/billing
 tactic billing.refund lllm://demo/billing/tactics/refund
 ```
 
-AAAX 0.3 resolved these paths against the working directory. A path that
-is not in the file's folder but is in the working directory still loads,
-with a `FutureWarning` that names it: a future minor release looks in the
-file's folder only. Other relative paths in the file, such as a store
-folder or a file it reads, are relative to the working directory; build
-those from `Path(__file__).parent`. A strategy imported as
-`module:attribute` is not run as a file, so its package paths are relative
-to the working directory too.
+AAAX 0.3 resolved these paths against the working directory. So for now,
+a path that leads to a package (a folder with an `lllm.toml`, or a
+manifest file) only from the working directory still loads that package,
+with a `FutureWarning` that names it, and so does a path that leads to a
+different package from each place, which keeps AAAX 0.3's choice. A
+future minor release looks in the file's folder only. Other relative
+paths in the file, such as a store folder or a file it reads, are relative
+to the working directory; build those from `Path(__file__).parent`. A
+strategy imported as `module:attribute` is not run as a file, so its
+package paths are relative to the working directory too.
 
 `shell.py` is the file name LLLM 0.3's `lllm shell` loaded, and it still
 works. `aaax.py`, which AAAX 0.2 loaded, still loads with a
