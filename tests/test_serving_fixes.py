@@ -287,8 +287,10 @@ def test_the_cross_site_refusal_carries_only_a_type_and_a_message():
     response = client.post("/tactics/echo/run", headers={**CROSS_SITE, **TEXT}, content="x")
 
     assert response.status_code == 403
-    assert error_detail(response)["tactic"] is None
-    assert error_detail(response)["endpoint"] is None
+    error = error_detail(response)
+    assert error["type"] == "CrossSiteRequestError" and error["message"]
+    assert (error["tactic"], error["endpoint"], error["request_id"]) == (None, None, None)
+    assert error["metadata"] == {}
 
 
 # Docs fix 3: a declared description did not reach /info, a handler's
@@ -1362,8 +1364,17 @@ def test_a_cross_site_post_that_is_not_json_is_refused(route, headers, body):
     response = client.post(route, headers=headers, content=body)
 
     assert response.status_code == 403
-    assert error_detail(response)["type"] == "CrossSiteRequestError"
-    assert "must send JSON" in error_detail(response)["message"]
+    assert error_detail(response) == {
+        "type": "CrossSiteRequestError",
+        "message": (
+            "A cross-site POST must send JSON (Content-Type: application/json), "
+            "which browsers check with the app's CORS settings first."
+        ),
+        "tactic": None,
+        "endpoint": None,
+        "request_id": None,
+        "metadata": {},
+    }
     assert calls == []
 
 
@@ -1439,7 +1450,17 @@ def test_a_cross_site_get_to_a_tactics_custom_endpoint_is_refused(monkeypatch):
         "/tactics/explainer/explain", headers={**CROSS_SITE_FETCH, "content-type": "application/json"}
     )
     assert json_get.status_code == 403
-    assert error_detail(json_get)["type"] == "CrossSiteRequestError"
+    assert error_detail(json_get) == {
+        "type": "CrossSiteRequestError",
+        "message": (
+            "A cross-site GET or HEAD cannot reach a tactic's custom endpoint, "
+            "which runs its code: call it from the app's own origin."
+        ),
+        "tactic": None,
+        "endpoint": None,
+        "request_id": None,
+        "metadata": {},
+    }
     assert Explainer.calls == []
     # The built-in routes that only read stay open, and so do callers on the
     # same origin and those that are not browsers.
@@ -1451,6 +1472,26 @@ def test_a_cross_site_get_to_a_tactics_custom_endpoint_is_refused(monkeypatch):
     assert client.get("/tactics/explainer/explain?q=1").json() == {"explained": {"q": "1"}}
     same_origin = {"origin": "http://testserver", "sec-fetch-site": "same-origin"}
     assert client.get("/tactics/explainer/explain", headers=same_origin).status_code == 200
+
+
+def test_the_guard_reads_paths_within_the_app_wherever_it_is_mounted(monkeypatch):
+    monkeypatch.setattr(Explainer, "calls", [])
+    app = create_strategy_app(Strategy("desk").add_tactic(Explainer()))
+    app.get("/tactics/extra/hello")(lambda: {"hello": True})  # the user's own
+    outer = FastAPI()
+    outer.mount("/api", app)
+
+    for client, prefix in ((TestClient(app), ""), (TestClient(outer), "/api")):
+        explain = client.get(f"{prefix}/tactics/explainer/explain", headers=CROSS_SITE_FETCH)
+        info = client.get(f"{prefix}/tactics/explainer/info", headers=CROSS_SITE_FETCH)
+        hello = client.get(f"{prefix}/tactics/extra/hello", headers=CROSS_SITE_FETCH)
+        missing = client.get(f"{prefix}/tactics/nope/x", headers=CROSS_SITE_FETCH)
+        assert explain.status_code == 403, prefix
+        assert info.status_code == 200, prefix
+        assert hello.json() == {"hello": True}  # not a tactic's endpoint
+        assert missing.status_code == 404, prefix
+        assert error_detail(missing)["type"] == "TacticNotFound"
+    assert Explainer.calls == []
 
 
 def test_put_patch_and_delete_are_never_refused(monkeypatch):
