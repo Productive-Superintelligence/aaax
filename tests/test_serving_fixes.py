@@ -218,15 +218,29 @@ def test_an_app_mounted_under_a_prefix_answers_tactic_not_found():
     assert client.get("/api/nothing-here").json() == {"detail": "Not Found"}
 
 
-def test_a_not_found_name_lllm_errors_cannot_carry_still_gets_the_envelope():
+@pytest.mark.parametrize(
+    ("segment", "name"),
+    [("a;b", "a;b"), ("a:b", "a:b"), ("a%25b", "a%b"), ("a%5Cb", "a\\b"), ("%20", " ")],
+)
+def test_a_not_found_name_lllm_errors_cannot_carry_still_gets_the_envelope(segment, name):
     client = TestClient(create_strategy_app(Strategy("desk")))
 
-    response = client.post("/tactics/a;b/run", json={"input": 1})
+    response = client.post(f"/tactics/{segment}/run", json={"input": 1})
 
     assert response.status_code == 404
     assert error_detail(response)["type"] == "TacticNotFound"
-    assert error_detail(response)["message"] == "Tactic not found: a;b"
+    assert error_detail(response)["message"] == f"Tactic not found: {name}"
     assert error_detail(response)["tactic"] is None
+
+
+def test_the_cross_site_refusal_carries_only_a_type_and_a_message():
+    client = TestClient(create_strategy_app(Strategy("desk").add_tactic(Echo())))
+
+    response = client.post("/tactics/echo/run", headers={**CROSS_SITE, **TEXT}, content="x")
+
+    assert response.status_code == 403
+    assert error_detail(response)["tactic"] is None
+    assert error_detail(response)["endpoint"] is None
 
 
 # Docs fix 3: a declared description did not reach /info, a handler's

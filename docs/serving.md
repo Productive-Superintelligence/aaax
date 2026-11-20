@@ -294,7 +294,8 @@ routes, with LLLM's codes: 400 for `SchemaError` (but 500 for an
 `ValueError` and `HTTPException` included. On `/tactics/...` the error
 carries the tactic's name and the `request_id`; on the strategy's routes
 `metadata.resource` names the resource. SSSN's routes under `/network/`
-use the same envelope with only `type` and `message`.
+use the same envelope with only `type` and `message`, and so does the 403
+that refuses a cross-site request, on any route.
 
 ## Serve from the command line
 
