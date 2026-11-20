@@ -33,14 +33,11 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.responses import Response
-from starlette.routing import Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import lllm.protocol
@@ -117,15 +114,23 @@ def create_strategy_app(
         error = SchemaError(_validation_message(exc.errors()))
         return JSONResponse(status_code=400, content={"detail": _error_payload(error)})
 
-    @app.exception_handler(404)
-    async def not_found(request: Request, exc: StarletteHTTPException) -> Response:
-        # A path under /tactics/ that no route or mount of the app matched,
-        # for a name no tactic is mounted under, gets the 404 that LLLM's
-        # multi-tactic app gives. Routes added to the app later still match.
-        name = _unmatched_tactic_name(request)
-        if name is not None and name not in mounted:
-            return JSONResponse(status_code=404, content={"detail": _tactic_not_found(name)})
-        return await http_exception_handler(request, exc)
+    not_found = app.router.default
+
+    async def tactic_not_found(scope: Scope, receive: Receive, send: Send) -> None:
+        # The router calls this when no route or mount of the app matched
+        # (routes added to the app later included). A path under /tactics/
+        # for a name no tactic is mounted under gets the 404 that LLLM's
+        # multi-tactic app gives; any other goes on to Starlette's not_found,
+        # which raises the 404 to the app's own exception handlers.
+        if scope["type"] == "http":
+            found = re.fullmatch(r"/tactics/([^/]+)(?:/.*)?", _route_path(scope), re.DOTALL)
+            if found is not None and found.group(1) not in mounted:
+                content = {"detail": _tactic_not_found(found.group(1))}
+                await JSONResponse(status_code=404, content=content)(scope, receive, send)
+                return
+        await not_found(scope, receive, send)
+
+    app.router.default = tactic_not_found
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -484,18 +489,6 @@ def _http_error(
             metadata={} if resource is None else {"resource": resource},
         ),
     )
-
-
-def _unmatched_tactic_name(request: Request) -> str | None:
-    """The NAME of a ``/tactics/NAME[/...]`` path that no route of the app matched."""
-
-    scope = request.scope
-    found = re.fullmatch(r"/tactics/([^/]+)(?:/.*)?", _route_path(scope), re.DOTALL)
-    if found is None:
-        return None
-    if any(route.matches(scope)[0] is not Match.NONE for route in request.app.router.routes):
-        return None  # a route matched and raised the 404 itself
-    return found.group(1)
 
 
 def _tactic_not_found(name: str) -> dict[str, Any]:

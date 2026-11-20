@@ -167,6 +167,51 @@ def test_routes_added_under_tactics_after_the_app_is_built_still_answer():
     assert bare.headers["location"].endswith("/tactics/echo/")
 
 
+def test_the_apps_own_http_exception_handler_still_sees_every_other_404():
+    from fastapi.responses import JSONResponse
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    app = create_strategy_app(Strategy("desk").add_tactic(Echo()))
+
+    @app.get("/tactics/extra/gone")
+    def gone():
+        raise HTTPException(status_code=404, detail="gone")
+
+    @app.exception_handler(StarletteHTTPException)
+    async def handle(request, exc):
+        body = {"handled": exc.status_code, "detail": exc.detail}
+        return JSONResponse(body, status_code=exc.status_code)
+
+    client = TestClient(app)
+
+    missing = client.post("/resources/nope/invoke", json={"input": 1}).json()
+    assert missing["handled"] == 404
+    assert missing["detail"]["error"]["type"] == "ResourceNotFoundError"
+    assert client.get("/tactics/extra/gone").json() == {"handled": 404, "detail": "gone"}
+    assert client.get("/nothing-here").json() == {"handled": 404, "detail": "Not Found"}
+    # A path under /tactics/ for a name no tactic is mounted under still
+    # gets LLLM's TacticNotFound.
+    tactic = client.post("/tactics/nope/run", json={"input": 1})
+    assert error_detail(tactic)["type"] == "TacticNotFound"
+
+
+def test_an_app_mounted_under_a_prefix_answers_tactic_not_found():
+    outer = FastAPI()
+    outer.mount("/api", create_strategy_app(Strategy("desk").add_tactic(Echo())))
+    client = TestClient(outer)
+
+    missing = client.post("/api/tactics/nope/run", json={"input": 1}, follow_redirects=False)
+    bare = client.get("/api/tactics/nope", follow_redirects=False)
+
+    assert missing.status_code == bare.status_code == 404
+    assert error_detail(missing)["type"] == error_detail(bare)["type"] == "TacticNotFound"
+    assert error_detail(missing)["tactic"] == "nope"
+    assert client.post("/api/tactics/echo/run", json={"input": 1}).json()["tactic"] == "echo"
+    resource = client.post("/api/resources/nope/invoke", json={"input": 1})
+    assert error_detail(resource)["type"] == "ResourceNotFoundError"
+    assert client.get("/api/nothing-here").json() == {"detail": "Not Found"}
+
+
 def test_a_not_found_name_lllm_errors_cannot_carry_still_gets_the_envelope():
     client = TestClient(create_strategy_app(Strategy("desk")))
 
