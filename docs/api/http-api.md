@@ -41,7 +41,9 @@ The tactic services under `/tactics/{name}/` use LLLM's service envelopes:
 requests are `{"input": ..., "context": {...}}` with a `CallContext`-shaped
 context, and responses are `{"output": ..., "request_id": ..., "tactic": ...}`.
 The `tactic` field of replies and errors is `{name}`, the resource's local
-name, also when the resource was renamed or prefixed.
+name, also when the resource was renamed or prefixed. The exception is a
+`{name}` with `;`, which LLLM's tactic names cannot hold: that tactic
+answers under its own name.
 
 ## Endpoints
 
@@ -63,8 +65,8 @@ name, also when the resource was renamed or prefixed.
 
 A `{name}` under `/tactics/` that no tactic is mounted under is a 404 in
 the error envelope below, with the type `TacticNotFound`, the message
-`Tactic not found: {name}`, and `tactic` set to `{name}`, as in LLLM's own
-multi-tactic services.
+`Tactic not found: {name}`, and `tactic` set to `{name}` (or `null` for a
+name with `;`), as in LLLM's own multi-tactic services.
 
 ## Errors
 

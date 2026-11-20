@@ -62,7 +62,11 @@ def add_package(
 
     Resource names are ``<prefix>.<name>`` with a ``prefix``. A package whose
     names clash with resources already in the strategy is rejected before
-    anything is added; mount it with a prefix to keep the names apart.
+    anything is added; mount it with a prefix to keep the names apart. Each
+    record takes its description from the manifest only, since package code
+    is not imported to describe it. A served tactic keeps its code's
+    description, examples, and ``package_ref``, and takes the manifest's
+    only when the code has none.
 
     With ``bind`` (the default), tactics get handlers that import the package
     on first use, and channels are backed by the strategy's one store under

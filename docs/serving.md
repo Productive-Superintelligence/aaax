@@ -114,10 +114,14 @@ sit under the same prefix: an endpoint at `/explain` is served at
 `strategy.tactics()` decides what is mounted. A `Tactic` is served as is,
 a package tactic is imported when the app is built, and a plain function
 is wrapped with `lllm.as_tactic`, so its annotations become the schemas.
-Each one is served under its local name, so the `tactic` field of replies
-and errors names the route, as in `/tactics/support.triage/run`. A tactic
-that `add_tactic(name=...)` or a package prefix renamed is served as a
-copy with that name; the tactic you mounted keeps its own.
+A tactic mounted under a name, description, or ref other than its own,
+such as one that `add_tactic(name=...)` or a package prefix renamed, is
+served as a copy that has them; the tactic you mounted, or the package
+code imported, keeps its own. Each tactic is served under its local name,
+so the `tactic` field of replies and errors names the route, as in
+`/tactics/support.triage/run`. The exception is a local name with `;`,
+which LLLM's tactic names cannot hold: that tactic answers under its own
+name.
 
 Requests use LLLM's envelope, `{"input": ..., "context": {...}}`, and the
 `context` becomes the `CallContext` a tactic receives. A tactic declares a

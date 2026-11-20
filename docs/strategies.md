@@ -98,9 +98,10 @@ docstring, as `add_tactic(as_tactic(fn))` does, and its `ref` reaches the
 tactic as `add_tactic`'s does.
 
 `strategy.tactics()` returns every tactic resource that has a handler, as
-LLLM tactics, by local name: tactic objects as they are, package tactics
-loaded, and plain functions wrapped. Use it to call one tactic directly, or
-to hand it to code that takes a tactic:
+LLLM tactics, by local name: a tactic object as it is, or as a copy when
+it was mounted under another name, description, or ref; a package tactic
+loaded; and a plain function wrapped. Use it to call one tactic directly,
+or to hand it to code that takes a tactic:
 
 ```python title="tactics.py"
 from aaax import Strategy
@@ -202,7 +203,9 @@ A strategy's name, and each resource's name, must be a non-empty path
 segment: no whitespace, `/`, `:`, `\`, or `%`, and not `.` or `..`. Dots,
 dashes, and underscores are fine. Resource names become URL paths, such as
 `/tactics/{name}/run`, and the strategy's name follows the same rule. Both
-are checked when you build the strategy, not when a request arrives:
+are checked when you build the strategy, not when a request arrives. Leave
+`;` out of tactic names too: LLLM's tactic names cannot hold it, so a
+tactic mounted under such a name answers under its own name.
 
 ```python title="names.py"
 from aaax import Strategy

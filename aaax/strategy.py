@@ -246,8 +246,10 @@ class Strategy:
         ``description``, is served as a copy that has them: replies and
         errors name the route, ``/info`` gives the description and the ref
         as ``package_ref``, and requests carry the ref as ``tactic_ref``.
-        ``tactic`` itself is left as it is. A ``ref`` that is not a tactic
-        ref (``lllm://org/package/tactics/name``) labels only the record.
+        ``tactic`` itself is left as it is. A ``name`` LLLM cannot hold (one
+        with ``;``) keeps the tactic's own name where it is served, and a
+        ``ref`` that is not a tactic ref (``lllm://org/package/tactics/name``)
+        labels only the record.
         """
 
         info = tactic.info()
@@ -307,13 +309,16 @@ class Strategy:
     def tactics(self) -> dict[str, Tactic[Any, Any]]:
         """Tactic resources as lllm tactics, by local name.
 
-        Each is named after its resource, and carries the resource's
-        description and ref (when it is a tactic ref) if it has them. Tactic
-        objects are returned as-is, or as a copy when they were mounted
-        under another name, description, or ref; lazy package tactics are
-        loaded, and plain handler functions are wrapped with
-        :func:`lllm.as_tactic`. A handler that takes no input is called
-        without it, as the strategy calls its other handlers.
+        Each is named after its resource (unless LLLM cannot hold the name,
+        one with ``;``). A tactic object is returned as-is, or as a copy
+        when it was mounted under another name, description, or ref (a
+        tactic ref); the copy has them. A package tactic is loaded on first
+        use and named after its resource; it keeps its code's description,
+        examples, and ``package_ref``, taking the manifest's only when the
+        code has none. A plain handler function is wrapped with
+        :func:`lllm.as_tactic`, with the resource's description and ref. A
+        handler that takes no input is called without it, as the strategy
+        calls its other handlers.
         """
 
         return {name: self._tactic(name) for name in self._tactics}

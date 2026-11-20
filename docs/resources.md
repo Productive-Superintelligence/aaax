@@ -170,7 +170,7 @@ What `context` holds depends on the resource:
 
 | Resource | `context` |
 | --- | --- |
-| A tactic resource | An LLLM `CallContext`: the handler is wrapped with `lllm.as_tactic`, and a `Tactic` object is used as it is |
+| A tactic resource | An LLLM `CallContext`: the handler is wrapped with `lllm.as_tactic`, and a `Tactic` object is used as it is, or as a copy when it was mounted under another name, description, or ref |
 | Any other resource | The plain dict the caller sent, or `{}` |
 | Any other resource, with a `Tactic` object as handler | A `CallContext` whose `metadata` is that dict |
 
