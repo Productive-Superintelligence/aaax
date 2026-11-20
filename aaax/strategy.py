@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import functools
 import inspect
 import re
@@ -11,7 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from lllm.protocol import CallContext, Tactic
+from lllm.protocol import CallContext, Tactic, TacticInfo
 
 from .models import ResourceKind, StrategyInfo, StrategyResource, _segment
 
@@ -212,6 +213,8 @@ class Strategy:
         if handler is None:
             return self
         if resource.kind == "tactic":
+            if isinstance(handler, Tactic):
+                handler = _mounted_tactic(handler, name=resource.name)
             self._tactics[resource.name] = handler
         elif isinstance(handler, Tactic):
             self._handlers[resource.name] = _tactic_handler(handler)
@@ -228,7 +231,12 @@ class Strategy:
         description: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> "Strategy":
-        """Mount an lllm tactic; it is served at ``/tactics/<name>/``."""
+        """Mount an lllm tactic; it is served at ``/tactics/<name>/``.
+
+        A tactic mounted under another ``name`` is served as a copy that has
+        that name, so replies and errors name the route; ``tactic`` itself
+        is left as it is.
+        """
 
         info = tactic.info()
         return self.add_resource(
@@ -285,12 +293,13 @@ class Strategy:
         return self
 
     def tactics(self) -> dict[str, Tactic[Any, Any]]:
-        """Tactic resources as lllm tactics.
+        """Tactic resources as lllm tactics, by local name.
 
-        Tactic objects are returned as-is, lazy package tactics are loaded, and
-        plain handler functions are wrapped with :func:`lllm.as_tactic`. A
-        handler that takes no input is called without it, as the strategy
-        calls its other handlers.
+        Each is named after its resource. Tactic objects are returned as-is,
+        or as a copy when they were mounted under another name; lazy package
+        tactics are loaded, and plain handler functions are wrapped with
+        :func:`lllm.as_tactic`. A handler that takes no input is called
+        without it, as the strategy calls its other handlers.
         """
 
         return {name: self._tactic(name) for name in self._tactics}
@@ -437,6 +446,43 @@ async def _call(
     if inspect.isawaitable(result):
         return await result
     return result
+
+
+def _mounted_tactic(tactic: Tactic[Any, Any], *, name: str | None = None) -> Tactic[Any, Any]:
+    """``tactic`` as a strategy serves it: under its resource's local ``name``.
+
+    LLLM's tactic service names the tactic in every reply and error, so a
+    tactic mounted under another name is served as a shallow copy that has
+    it, as LLLM's native tactics copy themselves for each call. The tactic
+    passed in is left as it is, since other code may use it too. The copy's
+    identity is set through the protocol's own constructor, which checks it;
+    a name LLLM rejects, such as one with ``;`` (a valid AAAX name), is not
+    used.
+    """
+
+    if name is None or name == tactic.tactic_name or _tactic_name(name) is None:
+        return tactic
+    info = tactic.info()
+    served = copy.copy(tactic)
+    Tactic.__init__(
+        served,
+        name=name,
+        description=info.description,
+        package_ref=tactic.package_ref,
+        service_ref=tactic.service_ref,
+        examples=tactic.examples,
+        metadata=tactic.metadata,
+    )
+    return served
+
+
+def _tactic_name(name: str) -> str | None:
+    """``name`` if LLLM accepts it as a tactic name, else None."""
+
+    try:
+        return TacticInfo(name=name).name
+    except ValueError:
+        return None
 
 
 def _tactic_handler(tactic: Tactic[Any, Any]) -> Handler:

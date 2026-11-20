@@ -35,8 +35,8 @@ resource and the route (`resource` or `channel`), and is empty for `/run`.
 The tactic services under `/tactics/{name}/` use LLLM's service envelopes:
 requests are `{"input": ..., "context": {...}}` with a `CallContext`-shaped
 context, and responses are `{"output": ..., "request_id": ..., "tactic": ...}`.
-The `tactic` field is the tactic's own name, which can differ from `{name}`
-when the resource was renamed or prefixed.
+The `tactic` field of replies and errors is `{name}`, the resource's local
+name, also when the resource was renamed or prefixed.
 
 ## Endpoints
 

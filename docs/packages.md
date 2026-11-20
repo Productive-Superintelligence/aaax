@@ -223,9 +223,11 @@ uses:
 | Any other callable | A handler, wrapped with `as_tactic` and called once per input |
 
 [How entrypoints become tactics](https://lllm.one/runtimes/#how-entrypoints-become-tactics)
-has the fine print. A loaded tactic without a `package_ref` of its own gets
-the manifest's ref, on a copy, so its `/info` and the `tactic_ref` of every
-request's `CallContext` name it by ref. The strategy's record takes its
+has the fine print. The loaded tactic is served under its local name, such
+as `support.triage`, and one without a `package_ref` of its own gets the
+manifest's ref, so its `/info` and the `tactic_ref` of every request's
+`CallContext` name it by ref. Both are set on a copy, and the imported
+object is left as it is. The strategy's record takes its
 description from the manifest, while the tactic's `/info` takes it from the
 code, such as a docstring.
 

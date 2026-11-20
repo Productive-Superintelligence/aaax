@@ -10,7 +10,7 @@ from typing import Any
 from lllm.protocol.refs import tactic_ref_value
 
 from .models import StrategyResource
-from .strategy import Strategy, StrategyStore
+from .strategy import Strategy, StrategyStore, _mounted_tactic
 
 
 def strategy_from_package(
@@ -123,6 +123,7 @@ def add_package(
                 base_dir=base_dir,
                 name=name,
                 ref=manifest.ref("tactic", name),
+                local_name=_local_name(package_prefix, name),
             )
             if bind
             else None
@@ -314,11 +315,14 @@ class PackageTactic:
     """A package tactic entrypoint, imported on first use.
 
     Building or inspecting a strategy never imports package code; serving it
-    (or invoking the resource) does. A loaded tactic without a ``package_ref``
-    gets ``ref``, the manifest ref ``lllm://org/package/tactics/name``, on a
-    copy: the imported object may be shared with other packages or modules,
-    and it is left as it is. A ``ref`` that is not a valid tactic ref (the hub
-    accepts tactic names, like ``a#b``, that a ref cannot carry) is not used.
+    (or invoking the resource) does. ``name`` is the tactic's name in the
+    manifest, and ``local_name`` its resource name in the strategy, which
+    the loaded tactic is served under. A loaded tactic without a
+    ``package_ref`` gets ``ref``, the manifest ref
+    ``lllm://org/package/tactics/name``. Both are set on a copy: the imported
+    object may be shared with other packages or modules, and it is left as
+    it is. A ``ref`` that is not a valid tactic ref (the hub accepts tactic
+    names, like ``a#b``, that a ref cannot carry) is not used.
     """
 
     def __init__(
@@ -328,11 +332,13 @@ class PackageTactic:
         base_dir: Path,
         name: str,
         ref: str | None = None,
+        local_name: str | None = None,
     ) -> None:
         self.entrypoint = entrypoint
         self.base_dir = base_dir
         self.name = name
         self.ref = _tactic_ref(ref)
+        self.local_name = local_name
         self._tactic: Any = None
 
     def load(self) -> Any:
@@ -341,7 +347,7 @@ class PackageTactic:
             if self.ref is not None and tactic.package_ref is None:
                 tactic = copy.copy(tactic)
                 tactic.package_ref = self.ref
-            self._tactic = tactic
+            self._tactic = _mounted_tactic(tactic, name=self.local_name)
         return self._tactic
 
     async def __call__(
