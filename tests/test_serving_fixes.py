@@ -23,7 +23,7 @@ import lllm.credentials
 import lllm.protocol
 from lllm import Tactic
 from lllm.protocol import SchemaError
-from lllm.services import create_service_app
+from lllm.services import create_service_app, endpoint
 
 import aaax
 import aaax.strategy
@@ -1065,6 +1065,136 @@ def test_cross_site_reads_and_preflights_are_not_refused():
         headers={**CROSS_SITE, "access-control-request-method": "POST"},
     )
     assert preflight.status_code != 403
+
+
+class Explainer(Tactic[Any, Any]):
+    """A tactic with custom endpoints, which run its code."""
+
+    name = "explainer"
+    calls: list[Any] = []
+
+    def _run(self, input_value, *, context=None):
+        return input_value
+
+    @endpoint.get("/explain")
+    def explain(self, input_value, *, context=None):
+        self.calls.append(("explain", input_value))
+        return {"explained": input_value}
+
+    @endpoint.put("/notes")
+    def put_note(self, input_value, *, context=None):
+        self.calls.append(("put", input_value))
+        return {"put": input_value}
+
+    @endpoint.delete("/notes")
+    def delete_note(self, input_value, *, context=None):
+        self.calls.append(("delete", input_value))
+        return {"deleted": input_value}
+
+
+CROSS_SITE_FETCH = {**CROSS_SITE, "sec-fetch-site": "cross-site"}
+
+
+def test_a_cross_site_get_to_a_tactics_custom_endpoint_is_refused(monkeypatch):
+    monkeypatch.setattr(Explainer, "calls", [])
+    client = TestClient(create_strategy_app(Strategy("desk").add_tactic(Explainer())))
+
+    for method in ("GET", "HEAD"):
+        for headers in (CROSS_SITE_FETCH, CROSS_SITE, {"sec-fetch-site": "same-site"}):
+            response = client.request(method, "/tactics/explainer/explain?q=1", headers=headers)
+            assert response.status_code == 403, (method, headers)
+    json_get = client.get(
+        "/tactics/explainer/explain", headers={**CROSS_SITE_FETCH, "content-type": "application/json"}
+    )
+    assert json_get.status_code == 403
+    assert error_detail(json_get)["type"] == "CrossSiteRequestError"
+    assert Explainer.calls == []
+    # The built-in routes that only read stay open, and so do callers on the
+    # same origin and those that are not browsers.
+    for path in ("/info", "/openapi.json", "/docs", "/health", "/tactics/explainer/info"):
+        response = client.get(f"/tactics/explainer{path}", headers=CROSS_SITE_FETCH)
+        assert response.status_code == 200, path
+    for path in ("/strategy", "/resources", "/tactics", "/channels", "/packages", "/health", "/docs", "/openapi.json"):
+        assert client.get(path, headers=CROSS_SITE_FETCH).status_code == 200, path
+    assert client.get("/tactics/explainer/explain?q=1").json() == {"explained": {"q": "1"}}
+    same_origin = {"origin": "http://testserver", "sec-fetch-site": "same-origin"}
+    assert client.get("/tactics/explainer/explain", headers=same_origin).status_code == 200
+
+
+def test_put_patch_and_delete_are_never_refused(monkeypatch):
+    # Browsers preflight them across origins, so the app's CORS settings
+    # decide; a request that arrives was approved.
+    monkeypatch.setattr(Explainer, "calls", [])
+    client = TestClient(create_strategy_app(Strategy("desk").add_tactic(Explainer())))
+
+    put = client.put("/tactics/explainer/notes", headers={**CROSS_SITE_FETCH, **TEXT}, content="x")
+    delete = client.delete("/tactics/explainer/notes", headers=CROSS_SITE_FETCH)
+    patch = client.patch("/run", headers={**CROSS_SITE_FETCH, **TEXT}, content="x")
+
+    assert (put.status_code, delete.status_code) == (200, 200)
+    assert patch.status_code == 405  # the route's own answer, not the guard's
+    assert [call[0] for call in Explainer.calls] == ["put", "delete"]
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        # A proxy that terminates TLS: the page is https, the app sees http.
+        {"host": "desk.example.com", "origin": "https://desk.example.com"},
+        {"host": "desk.example.com:443", "origin": "https://desk.example.com"},
+        # A proxy that rewrites Host: Sec-Fetch-Site alone decides.
+        {"host": "127.0.0.1:8400", "origin": "https://desk.example.com", "sec-fetch-site": "same-origin"},
+        {"origin": "https://evil.example", "sec-fetch-site": "none"},
+    ],
+    ids=["tls-proxy", "tls-proxy-explicit-port", "host-rewriting-proxy", "fetch-site-none"],
+)
+def test_requests_from_the_same_origin_behind_a_proxy_are_not_refused(headers):
+    calls: list[Any] = []
+    client = _guarded_client(calls)
+
+    response = client.post("/run", headers={**headers, **TEXT}, content="from the page")
+
+    assert response.status_code == 200
+    assert calls == ["from the page"]
+
+
+def test_sec_fetch_site_decides_alone_when_present():
+    calls: list[Any] = []
+    client = _guarded_client(calls)
+    same_site = {"origin": "http://testserver", "sec-fetch-site": "same-site", **TEXT}
+
+    # The Origin matches the Host, but the browser says the page is on
+    # another origin of the same site.
+    assert client.post("/run", headers=same_site, content="x").status_code == 403
+    assert calls == []
+
+
+def test_allow_cross_site_requests_turns_the_guard_off(monkeypatch):
+    monkeypatch.setattr(Explainer, "calls", [])
+    strategy = Strategy("desk").add_tactic(Explainer())
+    strategy.runner(lambda value: value)
+    client = TestClient(create_strategy_app(strategy, allow_cross_site_requests=True))
+
+    assert client.post("/run", headers={**CROSS_SITE_FETCH, **TEXT}, content="x").status_code == 200
+    assert client.get("/tactics/explainer/explain", headers=CROSS_SITE_FETCH).status_code == 200
+
+
+def test_allow_cross_site_requests_reaches_an_lllm_that_takes_it(monkeypatch):
+    # LLLM's own tactic services gain the same switch; pass it on when they do.
+    import aaax.server
+
+    seen = []
+    real = aaax.server.create_tactic_app
+
+    def create_tactic_app(tactic, *, allow_cross_site_requests=False):
+        seen.append(allow_cross_site_requests)
+        return real(tactic)
+
+    monkeypatch.setattr(aaax.server, "create_tactic_app", create_tactic_app)
+    create_strategy_app(Strategy("desk").add_tactic(Echo()), allow_cross_site_requests=True)
+    create_strategy_app(Strategy("desk").add_tactic(Echo()))
+
+    assert seen == [True, False]
 
 
 # Review 8: lllm-core 0.4.1 raises OutputSchemaError, a SchemaError, for an

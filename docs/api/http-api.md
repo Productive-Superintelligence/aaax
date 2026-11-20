@@ -90,7 +90,7 @@ The strategy's routes report errors in LLLM's services error envelope:
 | Status | When |
 | --- | --- |
 | 400 | A malformed request, an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler, except an `OutputSchemaError`. |
-| 403 | A POST from another site (an `Origin` header for another host and port, or `Sec-Fetch-Site: cross-site`) whose body is not JSON (`CrossSiteRequestError`), on any route, the mounted apps' included. |
+| 403 | A cross-site request (by `Sec-Fetch-Site: cross-site` or `same-site`, or, without it, an `Origin` that is `null` or for another host and port) that is a POST whose body is not JSON, on any route, or a GET or HEAD to a tactic's custom endpoint under `/tactics/{name}/` (`CrossSiteRequestError`). `create_strategy_app(strategy, allow_cross_site_requests=True)` serves them. |
 | 404 | The resource named in the URL does not exist, or a `/channels/` route names a resource that is not a channel. |
 | Its own | An `HTTPException` from the runner or a handler keeps its status and plain `detail`; a channel store error keeps the store API's code (404 not found, 409 conflict, 400 otherwise). |
 | 500 | Anything else the runner or a handler raises, including an `OutputSchemaError`, which lllm-core 0.4.1 and later raise for a result that fails its output schema. |

@@ -280,7 +280,7 @@ print(response.status_code, response.json())  # (1)!
 | Status | When, on the strategy's routes |
 | --- | --- |
 | 400 | A body that does not validate (`SchemaError`), an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler, except an `OutputSchemaError` |
-| 403 | A cross-site POST whose body is not JSON (`CrossSiteRequestError`, [below](#your-own-server)) |
+| 403 | A cross-site POST whose body is not JSON, or a cross-site GET or HEAD to a tactic's custom endpoint (`CrossSiteRequestError`, [below](#your-own-server)) |
 | 404 | The URL names no resource, or a `/channels/` route names one that is not a channel (`ResourceNotFoundError`) |
 | 404, 409, 400 | A channel store error, with SSSN's codes: not found, conflict, anything else |
 | Its own | An `HTTPException` from the runner or a handler |
@@ -398,12 +398,18 @@ bearer-token middleware that works here unchanged. AAAX does not manage
 TLS, replicas, workers, secrets, or deployment; those belong to whatever
 runs the app.
 
-A page on another site can make a visitor's browser POST a form or a text
-body to a server on their machine without asking it first, so the app
-refuses a cross-site POST whose body is not JSON: one with an `Origin`
-header for another host and port, or `Sec-Fetch-Site: cross-site`, gets a
-403 `CrossSiteRequestError`. Scripts and other servers send no `Origin`
-and are not affected. Browsers check a cross-origin JSON request against
-the app's CORS settings before sending it, and the app allows none until
-you add FastAPI's `CORSMiddleware`. Behind a proxy that rewrites the `Host`
-header, send JSON.
+A page on another site can make a visitor's browser send a form, a text
+body, or a GET to a server on their machine without asking it first. So
+the app refuses, with a 403 `CrossSiteRequestError`, a cross-site POST
+whose body is not JSON, and a cross-site GET or HEAD to a tactic's custom
+endpoints, which run its code; a tactic's `info`, `docs`, and
+`openapi.json`, and the strategy's own read routes, stay open. A request
+is cross-site when its `Sec-Fetch-Site` header says `cross-site` or
+`same-site`, or, without that header, when its `Origin` is `null` or names
+another host and port than the `Host` header. Scripts and other servers
+send neither, and are not affected. Browsers check a cross-origin JSON
+request, and any PUT, PATCH, or DELETE, against the app's CORS settings
+before sending it, and the app allows none until you add FastAPI's
+`CORSMiddleware`. For an app that browsers on other origins must reach,
+build it with `create_strategy_app(strategy,
+allow_cross_site_requests=True)`.

@@ -25,6 +25,7 @@ POST whose body is not JSON with a 403.
 
 from __future__ import annotations
 
+import inspect
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -76,7 +77,11 @@ _ENVELOPE_BODY = {
 }
 
 
-def create_strategy_app(strategy: Strategy) -> FastAPI:
+def create_strategy_app(
+    strategy: Strategy,
+    *,
+    allow_cross_site_requests: bool = False,
+) -> FastAPI:
     """Expose a strategy as a FastAPI application.
 
     Building the app serves the strategy: it opens the strategy's store, which
@@ -84,6 +89,13 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
     included) at ``/network/``. That needs sssn 0.2 or newer: without it, a
     strategy with an sssn store raises ``ImportError``. A store that is not an
     sssn store is not mounted, and needs no sssn.
+
+    The app refuses the cross-site requests a page on another site can make
+    a visitor's browser send without asking first: a POST whose body is not
+    JSON, and a GET or HEAD to a mounted tactic's custom endpoints, which
+    run its code. ``allow_cross_site_requests=True`` serves them, for an app
+    that browsers on other origins must reach; it is passed on to LLLM's
+    tactic services when they take it.
     """
 
     from . import __version__
@@ -94,16 +106,16 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         version=__version__,
     )
     app.state.aaax_strategy = strategy
-    # App-wide, so the mounted tactic services and /network/ are covered too.
-    app.add_middleware(_CrossSitePostGuard)
+    mounted: set[str] = set()
+    if not allow_cross_site_requests:
+        # App-wide, so the mounted tactic services and /network/ are covered too.
+        app.add_middleware(_CrossSiteGuard, tactics=mounted)
     _document_envelope(app)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
         error = SchemaError(_validation_message(exc.errors()))
         return JSONResponse(status_code=400, content={"detail": _error_payload(error)})
-
-    mounted: set[str] = set()
 
     @app.exception_handler(404)
     async def not_found(request: Request, exc: StarletteHTTPException) -> Response:
@@ -218,7 +230,7 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         return await _invoke(strategy, name, envelope, endpoint="resource")
 
     for name, tactic in strategy.tactics().items():
-        app.mount(f"/tactics/{name}", create_tactic_app(tactic))
+        app.mount(f"/tactics/{name}", _tactic_app(tactic, allow_cross_site_requests))
         mounted.add(name)
     if strategy.store is not None and _is_sssn_store(strategy.store):
         _require_sssn()
@@ -262,65 +274,128 @@ def _document_envelope(app: FastAPI) -> None:
     app.openapi = openapi  # type: ignore[method-assign]
 
 
-class _CrossSitePostGuard:
-    """Refuse a cross-site POST that is not JSON: browsers send one unasked.
+def _tactic_app(tactic: Any, allow_cross_site_requests: bool) -> Any:
+    """LLLM's service for ``tactic``, passing the cross-site switch on when it takes one."""
 
-    A page on another site can make a visitor's browser POST a form or a
-    text body to the app, such as one served on 127.0.0.1, with no CORS
-    preflight; only JSON bodies are checked against the app's CORS settings
-    first. Such a POST carries an ``Origin`` header whose host and port are
-    not the ``Host`` header's, or ``Sec-Fetch-Site: cross-site``; unless its
-    body is JSON (``application/json`` or ``+json``), it is answered with a
-    403 in the services error envelope. Requests without those headers, from
-    scripts and servers, pass, and so do other methods: GET and HEAD read,
-    and a browser preflights every other method across origins.
+    if allow_cross_site_requests and "allow_cross_site_requests" in (
+        inspect.signature(create_tactic_app).parameters
+    ):
+        return create_tactic_app(tactic, allow_cross_site_requests=True)
+    return create_tactic_app(tactic)
+
+
+# The GET routes of a mounted tactic service that only read (its info,
+# health, and docs), as paths under /tactics/NAME; every other GET or HEAD
+# there reaches a custom endpoint, which runs the tactic's code.
+_TACTIC_READ_ROUTES = re.compile(
+    r"/?|/info|/health|/tactics|/tactics/[^/]+/info|/docs|/docs/oauth2-redirect|/redoc"
+    r"|/openapi\.json"
+)
+
+
+class _CrossSiteGuard:
+    """Refuse the cross-site requests a browser sends for any web page, unasked.
+
+    A page on another site can make a visitor's browser send a form or a
+    text body, or a GET, to any address, a server on 127.0.0.1 included,
+    without a CORS preflight. A request is cross-site when its
+    ``Sec-Fetch-Site`` says ``cross-site`` or ``same-site``; without that
+    header, when its ``Origin`` is ``null``, not http(s), or names another
+    host and port than its ``Host`` (each port defaulting from the Origin's
+    scheme). Such a request is answered with a 403 ``CrossSiteRequestError``
+    in the services error envelope when it is a POST whose body is not JSON
+    (``application/json`` or ``+json``), or a GET or HEAD to a custom
+    endpoint of a mounted tactic: any path under ``/tactics/NAME/`` but its
+    built-in read routes. Nothing else is refused: browsers preflight PUT,
+    PATCH, and DELETE across origins, so the app's CORS settings decide them.
     """
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, *, tactics: set[str]) -> None:
         self.app = app
+        self.tactics = tactics  # the names of the mounted tactics
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["method"] == "POST" and _cross_site_form(scope):
-            error = ErrorDetail(
-                type="CrossSiteRequestError",
-                message=(
+        message = self._refusal(scope) if scope["type"] == "http" else None
+        if message is None:
+            await self.app(scope, receive, send)
+            return
+        error = ErrorDetail(type="CrossSiteRequestError", message=message)
+        content = {"detail": ErrorResponse(error=error).model_dump(mode="json")}
+        await JSONResponse(status_code=403, content=content)(scope, receive, send)
+
+    def _refusal(self, scope: Scope) -> str | None:
+        """Why the request is refused, or None to serve it."""
+
+        method = scope["method"]
+        headers = Headers(scope=scope)
+        if method == "POST":
+            media_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if media_type == "application/json" or media_type.endswith("+json"):
+                return None
+            if _is_cross_site(headers):
+                return (
                     "A cross-site POST must send JSON (Content-Type: application/json), "
                     "which browsers check with the app's CORS settings first."
-                ),
-            )
-            content = {"detail": ErrorResponse(error=error).model_dump(mode="json")}
-            await JSONResponse(status_code=403, content=content)(scope, receive, send)
-            return
-        await self.app(scope, receive, send)
+                )
+            return None
+        if method in ("GET", "HEAD"):
+            found = re.fullmatch(r"/tactics/([^/]+)(/.*)", _route_path(scope), re.DOTALL)
+            if (
+                found is not None
+                and found.group(1) in self.tactics
+                and _TACTIC_READ_ROUTES.fullmatch(found.group(2)) is None
+                and _is_cross_site(headers)
+            ):
+                return (
+                    "A cross-site GET or HEAD cannot reach a tactic's custom endpoint, "
+                    "which runs its code: call it from the app's own origin."
+                )
+        return None
 
 
-def _cross_site_form(scope: Scope) -> bool:
-    """Whether a request comes from another site with a body that is not JSON."""
+def _is_cross_site(headers: Headers) -> bool:
+    """Whether a browser sent the request for a page on another site.
 
-    headers = Headers(scope=scope)
-    media_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    if media_type == "application/json" or media_type.endswith("+json"):
-        return False
-    if headers.get("sec-fetch-site", "").lower() == "cross-site":
-        return True
+    ``Sec-Fetch-Site`` decides when the browser sends it, even where a proxy
+    rewrites ``Host``. Otherwise ``Origin`` is compared with ``Host``, a
+    missing port defaulting from the Origin's scheme, the scheme the page
+    used, which a proxy that terminates TLS hides from the app. A request
+    with neither header is not from a browser.
+    """
+
+    site = headers.get("sec-fetch-site")
+    if site is not None:
+        return site.strip().lower() not in ("same-origin", "none")
     origin = headers.get("origin")
     if origin is None:
         return False
-    host = _host_and_port(f"{scope.get('scheme', 'http')}://{headers.get('host', '')}")
-    return host is None or _host_and_port(origin) != host
-
-
-def _host_and_port(url: str) -> tuple[str, int | None] | None:
-    """The host and port of ``url``, with the scheme's default port; None if it has none."""
-
+    host = headers.get("host")
     try:
-        parts = urlsplit(url)
-        port = parts.port
-    except ValueError:
-        return None
-    if not parts.hostname:
-        return None  # an Origin of "null", for one
-    return parts.hostname, port or {"http": 80, "https": 443}.get(parts.scheme)
+        source = urlsplit(origin)
+        target = urlsplit(f"//{host}") if host else None
+        if (
+            source.scheme not in ("http", "https")
+            or not source.hostname
+            or target is None
+            or not target.hostname
+        ):
+            return True  # an Origin of "null", or nothing to compare it with
+        default = 443 if source.scheme == "https" else 80
+        return (source.hostname, source.port or default) != (
+            target.hostname,
+            target.port or default,
+        )
+    except ValueError:  # a malformed host or port
+        return True
+
+
+def _route_path(scope: Scope) -> str:
+    """The request path within the app, without the prefix it is mounted under."""
+
+    path, root_path = scope["path"], scope.get("root_path", "")
+    if root_path and path.startswith(root_path):
+        return path[len(root_path):]
+    return path
 
 
 async def _run_request(request: Request) -> StrategyRunRequest:
@@ -415,10 +490,7 @@ def _unmatched_tactic_name(request: Request) -> str | None:
     """The NAME of a ``/tactics/NAME[/...]`` path that no route of the app matched."""
 
     scope = request.scope
-    path, root_path = scope["path"], scope.get("root_path", "")
-    if root_path and path.startswith(root_path):  # the app is mounted under root_path
-        path = path[len(root_path):]
-    found = re.fullmatch(r"/tactics/([^/]+)(?:/.*)?", path, re.DOTALL)
+    found = re.fullmatch(r"/tactics/([^/]+)(?:/.*)?", _route_path(scope), re.DOTALL)
     if found is None:
         return None
     if any(route.matches(scope)[0] is not Match.NONE for route in request.app.router.routes):
