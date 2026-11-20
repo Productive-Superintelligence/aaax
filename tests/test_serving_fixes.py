@@ -106,11 +106,15 @@ def test_a_function_mounted_under_a_name_lllm_cannot_hold_answers_under_its_own(
 @pytest.mark.parametrize("name", ["ex{plain}", "{any}", "a{b", "a}b"])
 def test_a_tactic_named_with_braces_is_refused_when_the_app_is_built(name):
     # Starlette reads {identifier} in /tactics/<name> as a path parameter.
-    strategy = Strategy("desk").add_tactic(Echo(), name=name)
-    strategy.tactic("{record}")  # listed only: it has no route
+    # The record without a handler comes first: it has no route, so a check
+    # that also looked at it would name it instead.
+    strategy = Strategy("desk").tactic("{record}")
+    strategy.add_tactic(Echo(), name=name)
 
     with pytest.raises(ValueError, match=re.escape(f"Tactic {name!r} cannot be served")):
         create_strategy_app(strategy)
+    listed = TestClient(create_strategy_app(Strategy("desk").tactic("{record}")))
+    assert [record["name"] for record in listed.get("/tactics").json()] == ["{record}"]
 
 
 def test_a_package_with_a_brace_named_tactic_can_be_inspected_not_served(
@@ -930,18 +934,18 @@ def test_a_symlink_as_the_default_env_file_counts_as_unreadable(
 
 @pytest.mark.parametrize("kind", ["folder", "dangling-symlink"])
 @pytest.mark.parametrize(
-    "argv",
-    [["--credentials", "env"], ["--no-keyring"], []],
-    ids=["env", "no-keyring", "auto-without-a-keyring"],
+    ("argv", "keyring"),
+    [(["--credentials", "env"], True), (["--no-keyring"], True), ([], False)],
+    ids=["env-over-a-keyring", "no-keyring-over-a-keyring", "auto-without-a-keyring"],
 )
 def test_keys_are_not_asked_for_when_they_could_not_be_stored(
-    tmp_path: Path, serve_here, monkeypatch, capsys, argv, kind
+    tmp_path: Path, serve_here, monkeypatch, capsys, argv, keyring, kind
 ):
     # Typed into a terminal, they would go to the env file, which cannot be
     # read: writing it would fail, or go through a symlink to its target.
     _keyed_package(tmp_path / "keyed")
     _unreadable_env_file(kind)
-    monkeypatch.setattr(lllm.credentials, "keyring_available", lambda: False)
+    monkeypatch.setattr(lllm.credentials, "keyring_available", lambda: keyring)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
     def configure(*args, **kwargs):
