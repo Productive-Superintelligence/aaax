@@ -97,10 +97,11 @@ uses the package's description, and copies `package` (`org/name`),
 `version`, `source` (the folder), and `card` into the strategy's
 `metadata`.
 
-Unlike `lllm serve`, AAAX does not check the API keys a package declares
-under `[requirements.api_keys]`. Before serving a package whose tactics
-call models, put its keys in the environment; `lllm inspect support-desk`
-lists them.
+Like `lllm serve`, `aaax serve` checks the API keys a package declares
+under `[requirements.api_keys]`, and reads the keys that
+`lllm setup support-desk` stored, before it starts
+([API keys](serving.md#api-keys)); `lllm inspect support-desk` shows which
+ones are missing.
 
 ## Mount packages into a strategy
 

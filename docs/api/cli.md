@@ -9,6 +9,8 @@ error messages name the command you typed.
 ```bash
 aaax inspect TARGET [--json]
 aaax serve TARGET [--host 127.0.0.1] [--port 8400] [--log-level info]
+    [--env-file .env.local] [--no-keyring] [--credentials auto]
+    [--skip-key-check]
 aaax launch TARGET [...]          # an alias for serve
 aaax --version                    # aaax 0.3.0
 lllm shell inspect TARGET         # the same commands through lllm
@@ -61,6 +63,27 @@ Validation:
 - port must be between `1` and `65535`;
 - log level must be one of `critical`, `debug`, `error`, `info`, `trace`, or
   `warning`, in any case.
+
+Before it builds the app, `serve` checks the API keys of each package the
+strategy serves (a package target, or the packages a strategy file mounts
+with `bind=True`), with the same rules and options as `lllm serve`
+([API keys](../serving.md#api-keys)):
+
+| Option | Default | |
+| --- | --- | --- |
+| `--env-file` | `.env.local` | Env file to read keys from |
+| `--no-keyring` | off | Do not read keys from the OS keyring |
+| `--credentials` | `auto` | Where to store keys asked for in a terminal: `auto`, `keyring`, or `env` |
+| `--skip-key-check` | off | Start without checking keys |
+
+Without a terminal, missing keys are a usage error:
+
+```text
+aaax: error: missing required API key(s):
+- OPENAI_API_KEY - Model access for the triage agent.
+
+Run `lllm setup support-desk` or set the missing names in your environment.
+```
 
 A target that does not load, and a strategy whose channel store is an SSSN
 store (any package with channels, or an attached `LocalStore`) when SSSN is

@@ -6,15 +6,21 @@ channel store are tested in test_channels.py.
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
+import lllm.cli
+import lllm.credentials
 from lllm import Tactic
 from lllm.services import create_service_app
 
 from aaax import Strategy, StrategyResource, create_strategy_app
+from aaax.cli import main
 from helpers import error_detail, write_package
 
 
@@ -309,3 +315,150 @@ def test_a_channel_append_takes_the_event_fields_as_the_body_too():
     ]
     assert text.status_code == 400
     assert error_detail(text)["message"] == "input must be an object with the event fields"
+
+
+# Docs fix 5: aaax serve and lllm shell serve did not check a package's
+# [requirements.api_keys], and read keys from the environment only.
+
+KEY = "DOCS_FIX_API_KEY"
+MISSING_KEY = f"missing required API key(s):\n- {KEY} - Model access for the demo."
+
+
+def _keyed_package(root: Path) -> Path:
+    root.mkdir(parents=True)
+    (root / "docs_fix_keyed.py").write_text("def echo(value):\n    return value\n")
+    (root / "lllm.toml").write_text(
+        f"""
+[package]
+org = "demo"
+name = "keyed"
+
+[tactics.echo]
+entry = "docs_fix_keyed:echo"
+
+[requirements.api_keys]
+{KEY} = "Model access for the demo."
+""".lstrip(),
+        encoding="utf-8",
+    )
+    return root
+
+
+@pytest.fixture
+def serve_here(tmp_path: Path, monkeypatch):
+    """Serve from ``tmp_path`` without the key, a keyring, or a server.
+
+    Returns the list of apps ``uvicorn.run`` was called with.
+    """
+
+    # setenv before delenv, so the key the command loads is removed afterwards.
+    monkeypatch.setenv(KEY, "placeholder")
+    monkeypatch.delenv(KEY)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(lllm.credentials, "keyring_get", lambda name: None)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    served: list[Any] = []
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: served.append(app))
+    return served
+
+
+def _serve_error(capsys, argv: list[str], command=main) -> str:
+    with pytest.raises(SystemExit) as exit_info:
+        command(argv)
+    assert exit_info.value.code == 2
+    return capsys.readouterr().err
+
+
+def test_serving_a_package_checks_its_api_keys(tmp_path: Path, serve_here, capsys):
+    _keyed_package(tmp_path / "keyed")
+
+    for command in (["serve", "keyed"], ["launch", "keyed/lllm.toml"]):
+        err = _serve_error(capsys, command)
+        assert MISSING_KEY in err
+        assert "Run `lllm setup keyed` or set the missing names" in err
+    assert serve_here == []
+    assert main(["serve", "keyed", "--skip-key-check"]) == 0
+    assert len(serve_here) == 1
+
+
+def test_serving_a_strategy_file_checks_the_keys_of_its_packages(
+    tmp_path: Path, serve_here, capsys
+):
+    package = _keyed_package(tmp_path / "vendor" / "keyed")
+    (tmp_path / "strategy.py").write_text(
+        "from aaax import Strategy\n"
+        "strategy = Strategy('ops')\n"
+        f"strategy.use_package({str(package)!r}, prefix='k')\n"
+        f"strategy.use_package({str(package)!r}, prefix='ref', bind=False)\n",
+        encoding="utf-8",
+    )
+
+    (tmp_path / "reference.py").write_text(
+        "from aaax import Strategy\n"
+        "strategy = Strategy('ref')\n"
+        f"strategy.use_package({str(package)!r}, bind=False)\n",
+        encoding="utf-8",
+    )
+
+    err = _serve_error(capsys, ["serve", "strategy.py"])
+
+    assert MISSING_KEY in err
+    assert "Run `lllm setup vendor/keyed` or set" in err
+    assert serve_here == []
+    # A package mounted for reference runs no code, so it needs no keys.
+    assert main(["serve", "reference.py"]) == 0
+    assert len(serve_here) == 1
+
+
+def test_keys_stored_by_lllm_setup_count_and_are_loaded(
+    tmp_path: Path, serve_here, monkeypatch, capsys
+):
+    _keyed_package(tmp_path / "keyed")
+    lllm.credentials.write_env_file(".env.local", {KEY: "from-the-env-file"})
+
+    assert main(["serve", "keyed"]) == 0
+    assert os.environ[KEY] == "from-the-env-file"
+    # Another env file, and the OS keyring, which --no-keyring leaves out.
+    os.environ.pop(KEY)
+    Path(".env.local").unlink()
+    lllm.credentials.write_env_file("keys.env", {KEY: "from-keys-env"})
+    assert main(["serve", "keyed", "--env-file", "keys.env"]) == 0
+    assert os.environ.pop(KEY) == "from-keys-env"
+    serve_here.clear()
+    monkeypatch.setattr(lllm.credentials, "keyring_get", lambda name: "from-the-keyring")
+    assert MISSING_KEY in _serve_error(capsys, ["serve", "keyed", "--no-keyring"])
+    assert main(["serve", "keyed"]) == 0
+    assert os.environ[KEY] == "from-the-keyring"
+    assert len(serve_here) == 1
+
+
+def test_missing_keys_are_asked_for_in_a_terminal(
+    tmp_path: Path, serve_here, monkeypatch, capsys
+):
+    _keyed_package(tmp_path / "keyed")
+    asked = []
+
+    def configure(missing, *, credentials, env_file):
+        asked.append(([requirement.name for requirement in missing], credentials))
+        lllm.credentials.write_env_file(env_file, {KEY: "typed-in"})
+        return str(env_file)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(lllm.credentials, "configure_missing_api_keys", configure)
+
+    assert main(["serve", "keyed", "--credentials", "env"]) == 0
+    assert asked == [([KEY], "env")]
+    assert "Configured 1 API key(s) via .env.local." in capsys.readouterr().out
+    assert os.environ[KEY] == "typed-in"
+
+
+def test_lllm_shell_serve_checks_keys_with_the_same_options(
+    tmp_path: Path, serve_here, capsys
+):
+    _keyed_package(tmp_path / "keyed")
+
+    err = _serve_error(capsys, ["shell", "serve", "keyed"], command=lllm.cli.main)
+
+    assert MISSING_KEY in err
+    assert lllm.cli.main(["shell", "serve", "keyed", "--skip-key-check"]) == 0
+    assert len(serve_here) == 1

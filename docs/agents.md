@@ -259,7 +259,7 @@ serve`, and add the prefix to the name for a package mounted with one.
 A package downloaded from the hub is a folder with an `lllm.toml`, so
 `aaax inspect` and `aaax serve` take it as is
 ([Use a package from the hub](https://lllm.one/publishing/#use-a-package-from-the-hub)).
-AAAX does not check or load API keys: `aaax serve` neither checks a
-package's `[requirements.api_keys]` nor reads keys that `lllm setup`
-stored, so export the keys in the environment before serving a package
-whose tactics call a model.
+`aaax serve` checks a package's `[requirements.api_keys]` as `lllm serve`
+does, and reads the keys that `lllm setup` stored, so the setup the card
+describes is all a package needs before a strategy serves it
+([API keys](serving.md#api-keys)).

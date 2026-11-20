@@ -32,16 +32,10 @@ def main(argv: list[str] | None = None) -> int:
     inspect_cmd.add_argument("--json", action="store_true")
 
     serve_cmd = subcommands.add_parser("serve", help="Serve a strategy as FastAPI")
-    serve_cmd.add_argument("target", help="strategy.py, directory, or module:factory")
-    serve_cmd.add_argument("--host", default="127.0.0.1")
-    serve_cmd.add_argument("--port", type=int, default=8400)
-    serve_cmd.add_argument("--log-level", default="info")
+    _add_serve_options(serve_cmd)
 
     launch_cmd = subcommands.add_parser("launch", help="Alias for serve")
-    launch_cmd.add_argument("target", help="strategy.py, directory, or module:factory")
-    launch_cmd.add_argument("--host", default="127.0.0.1")
-    launch_cmd.add_argument("--port", type=int, default=8400)
-    launch_cmd.add_argument("--log-level", default="info")
+    _add_serve_options(launch_cmd)
 
     args = parser.parse_args(argv)
 
@@ -65,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
         strategy = _load_or_error(parser, args.target)
+        if not args.skip_key_check:
+            _ensure_api_keys(parser, strategy, args)
         try:
             app = create_strategy_app(strategy)
         except ImportError as exc:  # e.g. a channel store without sssn
@@ -81,6 +77,104 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.error(f"Unknown command: {args.command}")
     return 2
+
+
+def _add_serve_options(command: argparse.ArgumentParser) -> None:
+    command.add_argument("target", help="strategy.py, directory, or module:factory")
+    command.add_argument("--host", default="127.0.0.1")
+    command.add_argument("--port", type=int, default=8400)
+    command.add_argument("--log-level", default="info")
+    # The API-key options of `lllm serve`, which mean the same here.
+    command.add_argument(
+        "--env-file",
+        default=".env.local",
+        help="Local env file to read for required API keys",
+    )
+    command.add_argument(
+        "--no-keyring",
+        action="store_true",
+        help="Do not read API keys from the OS keyring",
+    )
+    command.add_argument(
+        "--credentials",
+        choices=("auto", "keyring", "env"),
+        default="auto",
+        help="Where interactive setup should store missing keys",
+    )
+    command.add_argument(
+        "--skip-key-check",
+        action="store_true",
+        help="Start without checking the API keys the packages declare",
+    )
+
+
+def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) -> None:
+    """Check the API keys of the packages a strategy serves, as `lllm serve` does.
+
+    A package needs the keys that `lllm serve` and `lllm setup` check for
+    it: its ``[requirements.api_keys]``, plus those of the resource `lllm
+    serve` would launch. A key counts when it is in the environment, in the
+    env file, or in the OS keyring (unless ``--no-keyring``); one found in
+    the file or the keyring is put in the environment for the server. In a
+    terminal, missing keys are asked for and stored as `lllm setup` stores
+    them; otherwise the command stops and lists them.
+    """
+
+    from lllm.credentials import (
+        CredentialError,
+        configure_missing_api_keys,
+        format_missing_requirements,
+        resolve_api_keys,
+    )
+    from lllm.launch import LaunchError, load_launch_api_key_requirements
+
+    use_keyring = not args.no_keyring
+    try:
+        needed = {path: load_launch_api_key_requirements(path) for path in strategy._packages}
+        requirements = [requirement for found in needed.values() for requirement in found]
+        if not requirements:
+            return
+        resolution = resolve_api_keys(
+            requirements,
+            env_file=args.env_file,
+            use_keyring=use_keyring,
+        )
+        if not resolution.ok and sys.stdin.isatty():
+            backend = configure_missing_api_keys(
+                resolution.missing,
+                credentials=args.credentials,
+                env_file=args.env_file,
+            )
+            print(f"Configured {len(resolution.missing)} API key(s) via {backend}.")
+            resolution = resolve_api_keys(
+                requirements,
+                env_file=args.env_file,
+                use_keyring=use_keyring,
+            )
+    except (CredentialError, LaunchError, OSError, ValueError) as exc:
+        parser.error(str(exc))
+        raise
+    if not resolution.ok:
+        missing = {requirement.name for requirement in resolution.missing}
+        setup = " or ".join(
+            f"`lllm setup {_shown_path(path)}`"
+            for path, found in needed.items()
+            if any(requirement.name in missing for requirement in found)
+        )
+        parser.error(
+            "missing required API key(s):\n"
+            f"{format_missing_requirements(resolution.missing)}\n\n"
+            f"Run {setup} or set the missing names in your environment."
+        )
+
+
+def _shown_path(path: Path) -> str:
+    """``path`` relative to the working directory when it is inside it."""
+
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
 
 
 def _load_or_error(parser: argparse.ArgumentParser, target: str) -> Any:

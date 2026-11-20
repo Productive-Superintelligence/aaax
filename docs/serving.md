@@ -336,8 +336,36 @@ and `aaax launch` is another name for it.
 URL or `host:port`. `--port` defaults to 8400 (LLLM's `lllm serve` uses
 8000). `--log-level` is one of `critical`, `debug`, `error`, `info` (the
 default), `trace`, or `warning`. A bad option, a target that does not load,
-or a strategy whose store needs a missing SSSN stops the command with exit
-status 2 and a message. The [CLI reference](api/cli.md) lists every option.
+missing API keys, or a strategy whose store needs a missing SSSN stops the
+command with exit status 2 and a message. The [CLI reference](api/cli.md)
+lists every option.
+
+### API keys
+
+Before it starts, `aaax serve` checks the API keys of every package it
+serves, a package folder or the packages a strategy file mounts, the way
+`lllm serve` checks one package: its `[requirements.api_keys]`, plus the
+keys of the resource `lllm serve` would launch
+([API keys](https://lllm.one/packages/#api-keys)). A key counts when it is
+in the environment, in the env file (`--env-file`, default `.env.local`),
+or in the OS keyring, which is where `lllm setup` stores keys, and a key
+found in the file or the keyring is put in the server's environment. In a
+terminal, `aaax serve` asks for missing keys and stores them as
+`lllm setup` does (`--credentials auto`, `keyring`, or `env`); otherwise it
+stops and lists them:
+
+```text
+$ aaax serve support-desk
+aaax: error: missing required API key(s):
+- OPENAI_API_KEY - Model access for the triage agent.
+
+Run `lllm setup support-desk` or set the missing names in your environment.
+```
+
+`--no-keyring` leaves the keyring out, and `--skip-key-check` starts without
+checking. A package mounted with `bind=False` runs no code, so its keys are
+not checked. Only the command checks keys: an app you build with
+`create_strategy_app` and run yourself sees the environment it is given.
 
 ## Your own server
 

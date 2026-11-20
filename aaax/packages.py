@@ -70,6 +70,8 @@ def add_package(
         root = base_dir / ".lllm" / "network" if store is None else store
         strategy.attach_store(StrategyStore(root=root))
     store_root = strategy.store.root if bind and strategy.store is not None else None
+    if bind and base_dir not in strategy._packages:
+        strategy._packages.append(base_dir)
     strategy.add_resource(
         StrategyResource(
             kind="package",

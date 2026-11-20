@@ -139,6 +139,9 @@ class Strategy:
         # Store channels behind the channel resources that have no handler.
         self._channels: dict[str, dict[str, Any]] = {}
         self._store: StrategyStore | None = None
+        # Folders of the packages mounted with bind=True, whose API keys
+        # `aaax serve` checks.
+        self._packages: list[Path] = []
         self._runner = runner
         self.metadata = dict(metadata or {})
         for resource in resources:
