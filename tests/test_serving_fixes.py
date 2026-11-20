@@ -195,10 +195,31 @@ def test_the_apps_own_http_exception_handler_still_sees_every_other_404():
     assert missing["detail"]["error"]["type"] == "ResourceNotFoundError"
     assert client.get("/tactics/extra/gone").json() == {"handled": 404, "detail": "gone"}
     assert client.get("/nothing-here").json() == {"handled": 404, "detail": "Not Found"}
-    # A path under /tactics/ for a name no tactic is mounted under still
-    # gets LLLM's TacticNotFound.
-    tactic = client.post("/tactics/nope/run", json={"input": 1})
-    assert error_detail(tactic)["type"] == "TacticNotFound"
+    # A path under /tactics/ for a name no tactic is mounted under raises
+    # LLLM's TacticNotFound to the same handler, as in LLLM's own apps.
+    tactic = client.post("/tactics/nope/run", json={"input": 1}).json()
+    assert tactic["handled"] == 404
+    assert tactic["detail"]["error"]["type"] == "TacticNotFound"
+    assert tactic["detail"]["error"]["tactic"] == "nope"
+
+
+def test_a_404_handler_on_the_app_sees_tactic_not_found_and_the_default_matches_lllm():
+    from fastapi.responses import JSONResponse
+
+    plain = TestClient(create_strategy_app(Strategy("desk").add_tactic(Echo())))
+    lllm_client = TestClient(create_service_app([Echo()]))
+    app = create_strategy_app(Strategy("desk").add_tactic(Echo()))
+
+    @app.exception_handler(404)
+    async def handle(request, exc):
+        return JSONResponse({"seen": exc.detail["error"]["type"]}, status_code=404)
+
+    # Unhandled, the body is byte for byte LLLM's multi-tactic app's.
+    expected = lllm_client.post("/tactics/nope/run", json={"input": 1})
+    assert plain.post("/tactics/nope/run", json={"input": 1}).content == expected.content
+    assert TestClient(app).post("/tactics/nope/run", json={"input": 1}).json() == {
+        "seen": "TacticNotFound"
+    }
 
 
 def test_an_app_mounted_under_a_prefix_answers_tactic_not_found():

@@ -133,13 +133,16 @@ def create_strategy_app(
         # The router calls this when no route or mount of the app matched
         # (routes added to the app later included). A path under /tactics/
         # for a name no tactic is mounted under gets the 404 that LLLM's
-        # multi-tactic app gives; any other goes on to Starlette's not_found,
-        # which raises the 404 to the app's own exception handlers.
+        # multi-tactic app raises; any other goes on to Starlette's
+        # not_found. Both raise the 404 to the app's exception handlers, as
+        # Starlette's not_found does inside an app.
         if scope["type"] == "http":
             found = re.fullmatch(r"/tactics/([^/]+)(?:/.*)?", _route_path(scope), re.DOTALL)
             if found is not None and found.group(1) not in mounted:
-                content = {"detail": _tactic_not_found(found.group(1))}
-                await JSONResponse(status_code=404, content=content)(scope, receive, send)
+                detail = _tactic_not_found(found.group(1))
+                if "app" in scope:
+                    raise HTTPException(status_code=404, detail=detail)
+                await JSONResponse(status_code=404, content={"detail": detail})(scope, receive, send)
                 return
         await not_found(scope, receive, send)
 
