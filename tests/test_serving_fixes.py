@@ -965,24 +965,40 @@ def test_keys_are_not_asked_for_when_they_could_not_be_stored(
     assert serve_here == []
 
 
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        ["--env-file", "keys.env"],
+        ["--env-file=~/keys.env"],  # the shell leaves ~ alone after "="
+        ["--env-file", "keys.env/"],
+        ["--env-file", "keys.env/."],
+    ],
+    ids=["plain", "tilde", "trailing-slash", "trailing-dot"],
+)
 @pytest.mark.parametrize("terminal", [True, False], ids=["terminal", "no-terminal"])
 def test_an_env_file_named_on_the_command_line_that_is_a_symlink_stops_serve(
-    tmp_path: Path, serve_here, monkeypatch, capsys, terminal
+    tmp_path: Path, serve_here, monkeypatch, capsys, terminal, spelling
 ):
     # lllm-core 0.4.0 reads nothing at a dangling symlink, then writes typed
     # keys into its target, and the check after that refuses the link.
     _keyed_package(tmp_path / "keyed")
     os.symlink("elsewhere.env", "keys.env")
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(sys.stdin, "isatty", lambda: terminal)
+    # LLLM's own prompt and file writer, with only the typing stubbed, so a
+    # regression would write the target.
+    configure = lllm.credentials.configure_missing_api_keys
+    monkeypatch.setattr(
+        lllm.credentials,
+        "configure_missing_api_keys",
+        lambda missing, **kwargs: configure(
+            missing, secret_func=lambda prompt: "typed-in", **kwargs
+        ),
+    )
 
-    def configure(*args, **kwargs):
-        raise AssertionError("asked for keys")
+    err = _serve_error(capsys, ["serve", "keyed", *spelling, "--credentials", "env"])
 
-    monkeypatch.setattr(lllm.credentials, "configure_missing_api_keys", configure)
-
-    err = _serve_error(capsys, ["serve", "keyed", "--env-file", "keys.env", "--credentials", "env"])
-
-    assert "env file must be a regular file" in err
+    assert "error: env file must be a regular file" in err
     assert not Path("elsewhere.env").exists()
     assert serve_here == []
 

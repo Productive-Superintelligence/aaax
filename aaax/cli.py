@@ -153,11 +153,14 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
         raise
     if all(os.environ.get(name) for name in requirements):
         return
-    env_file = ".env.local" if args.env_file is None else args.env_file
-    read_from: str | None = env_file
+    # The path lllm opens, normalized once: ~ expanded (the shell leaves it
+    # alone after "="), a trailing "/" or "/." dropped. It is checked, read,
+    # and written as this same path.
+    env_file = Path(".env.local" if args.env_file is None else args.env_file).expanduser()
+    read_from: Path | None = env_file
     unread = ""  # why the default env file was not read, if it was not
     try:
-        if os.path.islink(env_file):
+        if env_file.is_symlink():
             # lllm-core 0.4.0's read_env_file sees nothing at a dangling or
             # looping symlink, and its write_env_file would write keys typed
             # here into the link's target; 0.4.1 refuses the link itself.
