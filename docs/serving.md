@@ -344,16 +344,19 @@ lists every option.
 ### API keys
 
 Before it starts, `aaax serve` checks the API keys of every package it
-serves, a package folder or the packages a strategy file mounts, the way
-`lllm serve` checks one package: its `[requirements.api_keys]`, plus the
-keys of the resource `lllm serve` would launch
-([API keys](https://lllm.one/packages/#api-keys)). A key counts when it is
-in the environment, in the env file (`--env-file`, default `.env.local`),
-or in the OS keyring, which is where `lllm setup` stores keys, and a key
-found in the file or the keyring is put in the server's environment. In a
-terminal, `aaax serve` asks for missing keys and stores them as
-`lllm setup` does (`--credentials auto`, `keyring`, or `env`); otherwise it
-stops and lists them:
+serves, a package folder or the packages a strategy file mounts: the keys
+`lllm serve` checks for the package, its `[requirements.api_keys]` plus
+those of the resource `lllm serve` would launch
+([API keys](https://lllm.one/packages/#api-keys)), and the keys each of
+its tactics declares, since AAAX serves them all. When the environment has
+every key, that is all. Otherwise a key also counts when it is in the env
+file (`--env-file`, default `.env.local`; an unreadable default counts as
+absent) or in the OS keyring, the two places `lllm setup` stores keys: the
+keyring when LLLM's `secure` extra is installed, the env file otherwise. A
+key found there is put in the server's environment before any package code
+is imported. In a terminal, `aaax serve` asks for missing keys and stores
+them as `lllm setup` does (`--credentials auto`, `keyring`, or `env`; in
+the env file under `--no-keyring`); otherwise it stops and lists them:
 
 ```text
 $ aaax serve support-desk
@@ -363,6 +366,8 @@ aaax: error: missing required API key(s):
 Run `lllm setup support-desk` or set the missing names in your environment.
 ```
 
+A key only one tactic declares is stored with `lllm setup PACKAGE
+--resource tactics.NAME`, and the message names that command.
 `--no-keyring` leaves the keyring out, and `--skip-key-check` starts without
 checking. A package mounted with `bind=False` runs no code, so its keys are
 not checked. Only the command checks keys: an app you build with

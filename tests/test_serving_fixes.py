@@ -329,17 +329,23 @@ KEY = "DOCS_FIX_API_KEY"
 MISSING_KEY = f"missing required API key(s):\n- {KEY} - Model access for the demo."
 
 
-def _keyed_package(root: Path) -> Path:
+def _keyed_package(
+    root: Path,
+    *,
+    manifest: str = "lllm.toml",
+    module: str = "docs_fix_keyed",
+    code: str = "def echo(value):\n    return value\n",
+) -> Path:
     root.mkdir(parents=True)
-    (root / "docs_fix_keyed.py").write_text("def echo(value):\n    return value\n")
-    (root / "lllm.toml").write_text(
+    (root / f"{module}.py").write_text(code)
+    (root / manifest).write_text(
         f"""
 [package]
 org = "demo"
 name = "keyed"
 
 [tactics.echo]
-entry = "docs_fix_keyed:echo"
+entry = "{module}:echo"
 
 [requirements.api_keys]
 {KEY} = "Model access for the demo."
@@ -454,6 +460,135 @@ def test_missing_keys_are_asked_for_in_a_terminal(
     assert asked == [([KEY], "env")]
     assert "Configured 1 API key(s) via .env.local." in capsys.readouterr().out
     assert os.environ[KEY] == "typed-in"
+
+
+def test_keys_already_in_the_environment_need_no_env_file_or_keyring(
+    tmp_path: Path, serve_here, monkeypatch
+):
+    _keyed_package(tmp_path / "keyed")
+    Path(".env.local").mkdir()  # not a file: reading it would fail
+
+    def keyring_get(name):
+        raise AssertionError("the keyring was read")
+
+    monkeypatch.setattr(lllm.credentials, "keyring_get", keyring_get)
+    monkeypatch.setenv(KEY, "exported")
+
+    assert main(["serve", "keyed"]) == 0
+    assert main(["serve", "keyed", "--env-file", ".env.local"]) == 0
+    assert len(serve_here) == 2
+
+
+def test_an_unreadable_default_env_file_counts_as_absent(
+    tmp_path: Path, serve_here, monkeypatch, capsys
+):
+    _keyed_package(tmp_path / "keyed")
+    Path(".env.local").mkdir()
+    monkeypatch.setattr(lllm.credentials, "keyring_get", lambda name: "from-the-keyring")
+
+    assert main(["serve", "keyed"]) == 0
+    assert os.environ.pop(KEY) == "from-the-keyring"
+    # An env file named on the command line has to be readable.
+    err = _serve_error(capsys, ["serve", "keyed", "--env-file", ".env.local"])
+    assert "env file must be a regular file" in err
+
+
+def test_a_package_mounted_from_another_manifest_file_is_checked_from_it(
+    tmp_path: Path, serve_here, capsys
+):
+    custom = _keyed_package(tmp_path / "custom", manifest="desk.toml")
+    # Another package in the same folder, which the strategy does not mount.
+    (custom / "lllm.toml").write_text(
+        '[package]\norg = "demo"\nname = "other"\n\n'
+        '[requirements.api_keys]\nDOCS_FIX_OTHER_KEY = "Not this one."\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "strategy.py").write_text(
+        "from aaax import Strategy\n"
+        "strategy = Strategy('ops')\n"
+        "strategy.use_package('custom/desk.toml', prefix='a')\n"
+        "strategy.use_package('custom/desk.toml', prefix='b')\n",
+        encoding="utf-8",
+    )
+
+    err = _serve_error(capsys, ["serve", "strategy.py"])
+
+    assert MISSING_KEY in err
+    assert "DOCS_FIX_OTHER_KEY" not in err
+    assert "Run `lllm setup custom/desk.toml` or set the missing names" in err
+    assert load_strategy("strategy.py")._packages == [(custom / "desk.toml").resolve()]
+
+
+def test_keys_asked_for_under_no_keyring_go_to_the_env_file(
+    tmp_path: Path, serve_here, monkeypatch, capsys
+):
+    _keyed_package(tmp_path / "keyed")
+    asked = []
+
+    def configure(missing, *, credentials, env_file):
+        asked.append(credentials)
+        lllm.credentials.write_env_file(env_file, {KEY: "typed-in"})
+        return str(env_file)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(lllm.credentials, "configure_missing_api_keys", configure)
+
+    assert main(["serve", "keyed", "--no-keyring"]) == 0
+    assert asked == ["env"]
+    assert os.environ[KEY] == "typed-in"
+
+
+TACTIC_KEY = "DOCS_FIX_TACTIC_KEY"
+
+
+def test_the_keys_every_tactic_of_a_package_declares_are_checked(
+    tmp_path: Path, serve_here, monkeypatch, capsys
+):
+    # lllm serve checks the first tactic, the one it would launch; AAAX
+    # serves both.
+    root = tmp_path / "pair"
+    root.mkdir()
+    (root / "docs_fix_pair.py").write_text(
+        "def first(value):\n    return value\n\n\ndef second(value):\n    return value\n"
+    )
+    (root / "lllm.toml").write_text(
+        '[package]\norg = "demo"\nname = "pair"\n\n'
+        '[tactics.first]\nentry = "docs_fix_pair:first"\n\n'
+        '[tactics.second]\nentry = "docs_fix_pair:second"\n'
+        f'metadata = {{ required_api_keys = ["{TACTIC_KEY}"] }}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(TACTIC_KEY, "placeholder")
+    monkeypatch.delenv(TACTIC_KEY)
+
+    err = _serve_error(capsys, ["serve", "pair"])
+
+    assert f"missing required API key(s):\n- {TACTIC_KEY}" in err
+    assert "Run `lllm setup pair --resource tactics.second` or set" in err
+    assert serve_here == []
+    monkeypatch.setenv(TACTIC_KEY, "exported")
+    assert main(["serve", "pair"]) == 0
+
+
+def test_stored_keys_reach_package_code_that_reads_them_on_import(
+    tmp_path: Path, serve_here, monkeypatch
+):
+    code = f"import os\n\nKEY = os.environ[{KEY!r}]\n\n\ndef echo(value):\n    return KEY\n"
+    for module in ("docs_fix_import_env", "docs_fix_import_keyring"):
+        _keyed_package(tmp_path / module, module=module, code=code)
+        monkeypatch.delitem(sys.modules, module, raising=False)
+    lllm.credentials.write_env_file(".env.local", {KEY: "from-the-env-file"})
+
+    assert main(["serve", "docs_fix_import_env"]) == 0
+    reply = TestClient(serve_here[-1]).post("/tactics/echo/run", json={"input": 1})
+    assert reply.json()["output"] == "from-the-env-file"
+
+    os.environ.pop(KEY)
+    Path(".env.local").unlink()
+    monkeypatch.setattr(lllm.credentials, "keyring_get", lambda name: "from-the-keyring")
+    assert main(["serve", "docs_fix_import_keyring"]) == 0
+    reply = TestClient(serve_here[-1]).post("/tactics/echo/run", json={"input": 1})
+    assert reply.json()["output"] == "from-the-keyring"
 
 
 def test_lllm_shell_serve_checks_keys_with_the_same_options(

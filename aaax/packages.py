@@ -93,8 +93,9 @@ def add_package(
         root = base_dir / ".lllm" / "network" if store is None else store
         strategy.attach_store(StrategyStore(root=root))
     store_root = strategy.store.root if bind and strategy.store is not None else None
-    if bind and base_dir not in strategy._packages:
-        strategy._packages.append(base_dir)
+    manifest_file = _manifest_file(path)
+    if bind and manifest_file not in strategy._packages:
+        strategy._packages.append(manifest_file)
     strategy.add_resource(
         StrategyResource(
             kind="package",
@@ -490,6 +491,15 @@ def _load_manifest(path: str | Path) -> Any:
     from lllm.hub import load_manifest
 
     return load_manifest(path)
+
+
+def _manifest_file(path: str | Path) -> Path:
+    """The manifest file that ``load_manifest(path)`` read: ``path``, or its lllm.toml."""
+
+    target = Path(path).expanduser()
+    if target.is_dir():
+        target = target / "lllm.toml"
+    return target.resolve()
 
 
 def _manifest_base(path: str | Path) -> Path:

@@ -66,14 +66,16 @@ Validation:
 
 Before it builds the app, `serve` checks the API keys of each package the
 strategy serves (a package target, or the packages a strategy file mounts
-with `bind=True`), with the same rules and options as `lllm serve`
-([API keys](../serving.md#api-keys)):
+with `bind=True`): those `lllm serve` checks, plus those each tactic
+declares, with the options of `lllm serve`
+([API keys](../serving.md#api-keys)). When the environment has every key,
+it reads nothing else:
 
 | Option | Default | |
 | --- | --- | --- |
-| `--env-file` | `.env.local` | Env file to read keys from |
+| `--env-file` | `.env.local` | Env file to read keys from; an unreadable default counts as absent |
 | `--no-keyring` | off | Do not read keys from the OS keyring |
-| `--credentials` | `auto` | Where to store keys asked for in a terminal: `auto`, `keyring`, or `env` |
+| `--credentials` | `auto` | Where to store keys asked for in a terminal: `keyring`, `env`, or `auto`: the keyring if it is installed (LLLM's `secure` extra) and `--no-keyring` is off, else the env file |
 | `--skip-key-check` | off | Start without checking keys |
 
 Without a terminal, missing keys are a usage error:

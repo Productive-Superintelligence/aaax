@@ -98,8 +98,8 @@ uses the package's description, and copies `package` (`org/name`),
 `metadata`.
 
 Like `lllm serve`, `aaax serve` checks the API keys a package declares
-under `[requirements.api_keys]`, and reads the keys that
-`lllm setup support-desk` stored, before it starts
+under `[requirements.api_keys]`, as well as those its tactics declare, and
+reads the keys that `lllm setup support-desk` stored, before it starts
 ([API keys](serving.md#api-keys)); `lllm inspect support-desk` shows which
 ones are missing.
 

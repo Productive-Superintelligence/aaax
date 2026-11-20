@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -87,8 +88,8 @@ def _add_serve_options(command: argparse.ArgumentParser) -> None:
     # The API-key options of `lllm serve`, which mean the same here.
     command.add_argument(
         "--env-file",
-        default=".env.local",
-        help="Local env file to read for required API keys",
+        default=None,
+        help="Local env file to read for required API keys (default: .env.local)",
     )
     command.add_argument(
         "--no-keyring",
@@ -111,61 +112,106 @@ def _add_serve_options(command: argparse.ArgumentParser) -> None:
 def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) -> None:
     """Check the API keys of the packages a strategy serves, as `lllm serve` does.
 
-    A package needs the keys that `lllm serve` and `lllm setup` check for
-    it: its ``[requirements.api_keys]``, plus those of the resource `lllm
-    serve` would launch. A key counts when it is in the environment, in the
-    env file, or in the OS keyring (unless ``--no-keyring``); one found in
-    the file or the keyring is put in the environment for the server. In a
-    terminal, missing keys are asked for and stored as `lllm setup` stores
-    them; otherwise the command stops and lists them.
+    A package needs what `lllm serve` and `lllm setup` check for it (its
+    ``[requirements.api_keys]``, plus the keys of the resource `lllm serve`
+    would launch) and the keys each of its tactics declares, since AAAX
+    serves them all. When the environment has every key, nothing else is
+    read. Otherwise a key counts when it is in the env file or in the OS
+    keyring (unless ``--no-keyring``), and one found there is put in the
+    environment for the server; an unreadable default ``.env.local``
+    counts as absent. In a terminal, missing keys are asked for and stored
+    as `lllm setup` stores them (in the env file under ``--no-keyring``);
+    otherwise the command stops and lists them.
     """
 
     from lllm.credentials import (
         CredentialError,
         configure_missing_api_keys,
         format_missing_requirements,
+        read_env_file,
         resolve_api_keys,
     )
-    from lllm.launch import LaunchError, load_launch_api_key_requirements
+    from lllm.launch import LaunchError
 
-    use_keyring = not args.no_keyring
+    requirements: dict[str, Any] = {}
+    setup: dict[str, str] = {}  # key name -> the `lllm setup` command that stores it
     try:
-        needed = {path: load_launch_api_key_requirements(path) for path in strategy._packages}
-        requirements = [requirement for found in needed.values() for requirement in found]
-        if not requirements:
-            return
+        for manifest_file in strategy._packages:
+            for requirement, command in _package_api_keys(manifest_file):
+                requirements.setdefault(requirement.name, requirement)
+                setup.setdefault(requirement.name, command)
+    except (CredentialError, LaunchError, OSError, ValueError) as exc:
+        parser.error(str(exc))
+        raise
+    if all(os.environ.get(name) for name in requirements):
+        return
+    env_file = ".env.local" if args.env_file is None else args.env_file
+    read_from: str | None = env_file
+    if args.env_file is None:
+        try:
+            read_env_file(env_file)
+        except (CredentialError, OSError, ValueError):
+            read_from = None  # an unreadable default env file counts as absent
+    use_keyring = not args.no_keyring
+    # Keys stored in the keyring would not be found again under --no-keyring.
+    credentials = "env" if args.no_keyring and args.credentials == "auto" else args.credentials
+    try:
         resolution = resolve_api_keys(
-            requirements,
-            env_file=args.env_file,
+            requirements.values(),
+            env_file=read_from,
             use_keyring=use_keyring,
         )
         if not resolution.ok and sys.stdin.isatty():
             backend = configure_missing_api_keys(
                 resolution.missing,
-                credentials=args.credentials,
-                env_file=args.env_file,
+                credentials=credentials,
+                env_file=env_file,
             )
             print(f"Configured {len(resolution.missing)} API key(s) via {backend}.")
             resolution = resolve_api_keys(
-                requirements,
-                env_file=args.env_file,
+                requirements.values(),
+                env_file=read_from,
                 use_keyring=use_keyring,
             )
-    except (CredentialError, LaunchError, OSError, ValueError) as exc:
+    except (CredentialError, OSError, ValueError) as exc:
         parser.error(str(exc))
         raise
     if not resolution.ok:
-        missing = {requirement.name for requirement in resolution.missing}
-        setup = " or ".join(
-            f"`lllm setup {_shown_path(path)}`"
-            for path, found in needed.items()
-            if any(requirement.name in missing for requirement in found)
-        )
+        commands = dict.fromkeys(setup[requirement.name] for requirement in resolution.missing)
         parser.error(
             "missing required API key(s):\n"
             f"{format_missing_requirements(resolution.missing)}\n\n"
-            f"Run {setup} or set the missing names in your environment."
+            f"Run {' and '.join(f'`{command}`' for command in commands)} "
+            "or set the missing names in your environment."
         )
+
+
+def _package_api_keys(manifest_file: Path) -> list[tuple[Any, str]]:
+    """The keys a package needs, each with the `lllm setup` command that stores it.
+
+    The keys `lllm setup PACKAGE` stores (those `lllm serve` checks) come
+    first; a tactic's own keys are stored with ``--resource tactics.NAME``.
+    """
+
+    from lllm.credentials import collect_manifest_api_key_requirements
+    from lllm.hub import load_manifest
+    from lllm.launch import load_launch_api_key_requirements
+
+    target = manifest_file.parent if manifest_file.name == "lllm.toml" else manifest_file
+    command = f"lllm setup {_shown_path(target)}"
+    found = [
+        (requirement, command)
+        for requirement in load_launch_api_key_requirements(manifest_file)
+    ]
+    manifest = load_manifest(manifest_file)
+    for name in manifest.tactics:
+        found.extend(
+            (requirement, f"{command} --resource tactics.{name}")
+            for requirement in collect_manifest_api_key_requirements(
+                manifest, section="tactics", name=name
+            )
+        )
+    return found
 
 
 def _shown_path(path: Path) -> str:
