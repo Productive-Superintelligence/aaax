@@ -33,10 +33,11 @@ whose keys are `input` or `task`, and optionally `context`, is the
 envelope: its `input` is the input, or its `task` when `input` is missing
 or `null`. Any other body, such as an object with other keys, a string, or
 a number, is the input itself; a body that is not JSON is its text, and an
-empty body is the input `null`. A body that nests arrays and objects more
-than 500 levels deep, counted outside strings, is a 400 `SchemaError`
-(`Request body is nested more than 500 levels deep.`), whether or not it
-parses: code that walks such a value recursively can crash the server.
+empty body is the input `null`. A body whose first value is an array or
+object nested more than 500 levels deep (brackets in strings aside) is a
+400 `SchemaError` (`Request body is nested more than 500 levels deep.`),
+whether or not the rest of it parses: code that walks such a value
+recursively can crash the server.
 With lllm-core 0.4.0, the routes under `/tactics/` have no such limit,
 and a deep enough body can still crash it there; 0.4.1 adds the limit.
 The body is decoded strictly as UTF-8;

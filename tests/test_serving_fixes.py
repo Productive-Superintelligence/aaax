@@ -621,6 +621,56 @@ def test_a_body_nested_more_than_500_levels_deep_is_a_400():
     assert calls == ["run", "svc", "feed"] * 2
 
 
+def test_the_depth_scan_stops_where_json_stops_reading():
+    # json.loads recurses only into a first value that is an array or an
+    # object, and refuses anything after that value.
+    seen: list[Any] = []
+    strategy = Strategy("desk")
+    strategy.runner(lambda value: seen.append(value) or "ran")
+    client = TestClient(create_strategy_app(strategy))
+    deep = "[" * 20000
+
+    for body in ('1 ' + deep, '"x" ' + deep, "[1] " + deep, "{} " + deep):
+        response = client.post("/run", content=body)
+        assert response.status_code == 200, body[:5]
+        assert seen[-1] == body  # not JSON: the text
+    for body in ("\ufeff \n\t" + deep, " \r\n{\"a\": " + deep):
+        assert client.post("/run", content=body).json()["detail"]["error"]["message"] == DEEP
+
+
+def test_a_big_body_is_read_off_the_event_loop():
+    import httpx
+
+    strategy = Strategy("desk")
+    strategy.runner(lambda value: "ran")
+    app = create_strategy_app(strategy)
+    big = "[" + "[]" * 5_000_000 + "]"  # 10 MB, scanned to the end
+
+    async def scenario():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            done: list[str] = []
+
+            async def post_big():
+                response = await client.post("/run", content=big)
+                done.append("big")
+                return response
+
+            async def get_health():
+                await asyncio.sleep(0.2)  # the big body is being read by now
+                response = await client.get("/health")
+                done.append("health")
+                return response
+
+            responses = await asyncio.gather(post_big(), get_health())
+            return done, responses
+
+    done, (big_response, health) = asyncio.run(scenario())
+
+    assert done == ["health", "big"]
+    assert big_response.status_code == health.status_code == 200
+
+
 def test_a_deep_body_never_reaches_a_native_tactic_on_a_small_thread_stack():
     # A native tactic repr()s its task in a worker thread; a body thousands
     # of levels deep crashed the process there (SIGSEGV) on small stacks.
