@@ -990,3 +990,139 @@ def test_an_output_schema_error_from_the_runner_or_a_handler_is_a_500(monkeypatc
         assert response.status_code == 500, route
         assert error_detail(response)["type"] == "OutputSchemaError"
     assert client.post("/resources/input/invoke", json={"input": 1}).status_code == 400
+
+
+# Review 9: tests the first pass missed.
+
+
+def _package_with_code(root: Path, module: str, code: str, tactic: str, entry: str) -> Path:
+    root.mkdir(parents=True)
+    (root / f"{module}.py").write_text(code, encoding="utf-8")
+    (root / "lllm.toml").write_text(
+        f'[package]\norg = "demo"\nname = "{root.name}"\n\n'
+        f'[tactics.{tactic}]\nentry = "{module}:{entry}"\n',
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_a_package_tactic_whose_code_sets_a_package_ref_keeps_it(tmp_path: Path, monkeypatch):
+    own = "lllm://elsewhere/shared/tactics/owned"
+    package = _package_with_code(
+        tmp_path / "owning",
+        "docs_fix_owned",
+        "from lllm.protocol import Tactic\n\n\n"
+        "class Owned(Tactic):\n"
+        "    def _run(self, input_value, *, context=None):\n"
+        "        return context.tactic_ref\n\n\n"
+        f"owned = Owned(name='owned', package_ref={own!r})\n",
+        "owned",
+        "owned",
+    )
+    monkeypatch.delitem(sys.modules, "docs_fix_owned", raising=False)
+    strategy = Strategy("ops").use_package(package, prefix="p")
+    client = TestClient(create_strategy_app(strategy))
+
+    assert client.get("/tactics/p.owned/info").json()["package_ref"] == own
+    assert client.post("/tactics/p.owned/run", json={"input": 1}).json()["output"] == own
+    assert client.post("/resources/p.owned/invoke", json={"input": 1}).json()["output"] == own
+    imported = sys.modules["docs_fix_owned"].owned
+    assert (imported.tactic_name, imported.package_ref) == ("owned", own)
+    assert strategy.tactics()["p.owned"] is not imported
+
+
+def test_a_store_path_in_a_strategy_file_stays_relative_to_the_working_directory(
+    tmp_path: Path, monkeypatch
+):
+    project = tmp_path / "project"
+    write_package(project / "packages" / "desk", "desk")  # with a channel
+    (project / "strategy.py").write_text(
+        "from aaax import Strategy\n"
+        "strategy = Strategy('ops')\n"
+        "strategy.use_package('packages/desk', store='state/network')\n",
+        encoding="utf-8",
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    strategy = load_strategy(project / "strategy.py")
+
+    assert strategy.store.root == (elsewhere / "state" / "network").resolve()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "raise RuntimeError('broken at the top')\n",
+        "def build_strategy():\n    raise RuntimeError('broken in build_strategy')\n",
+    ],
+    ids=["top-level", "build_strategy"],
+)
+def test_the_strategy_folder_is_forgotten_when_a_strategy_file_raises(
+    tmp_path: Path, monkeypatch, body
+):
+    import aaax.packages
+
+    project = tmp_path / "project"
+    write_package(project / "packages" / "desk", "desk", channels=())
+    (project / "broken.py").write_text(body, encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    with pytest.raises(RuntimeError, match="broken"):
+        load_strategy(project / "broken.py")
+
+    assert aaax.packages._strategy_folder.get() is None
+    with pytest.raises(OSError):
+        Strategy("loose").use_package("packages/desk")
+
+
+def test_a_tactic_mounted_without_overrides_is_the_callers_object():
+    echo = Echo()
+    again = Echo(name="again")
+    strategy = Strategy("desk").add_tactic(echo)
+    strategy.tactic("again", handler=again)  # its own name
+
+    assert strategy.tactics()["echo"] is echo
+    assert strategy.tactics()["again"] is again
+
+
+def test_a_renamed_copy_keeps_the_tactics_service_ref_and_metadata():
+    served = Echo(service_ref="https://desk.example/tactics/echo", metadata={"team": "support"})
+    strategy = Strategy("desk").add_tactic(served, name="desk.echo")
+
+    info = TestClient(create_strategy_app(strategy)).get("/tactics/desk.echo/info").json()
+
+    assert info["name"] == "desk.echo"
+    assert info["service_ref"] == "https://desk.example/tactics/echo"
+    assert info["metadata"] == {"team": "support"}
+    assert strategy.tactics()["desk.echo"] is not served
+
+
+def test_a_package_tactic_without_a_description_keeps_an_empty_record(
+    tmp_path: Path, monkeypatch
+):
+    from aaax.packages import PackageTactic
+
+    package = _package_with_code(
+        tmp_path / "undescribed",
+        "docs_fix_undescribed",
+        'def run(value):\n    """Described in code."""\n    return value\n',
+        "run",
+        "run",
+    )
+    monkeypatch.delitem(sys.modules, "docs_fix_undescribed", raising=False)
+    strategy = Strategy("ops").use_package(package)
+    # A package tactic mounted by hand is not imported to describe it either.
+    strategy.tactic(
+        "lazy",
+        handler=PackageTactic("docs_fix_undescribed:run", base_dir=package, name="run"),
+    )
+
+    records = {resource.name: resource.description for resource in strategy.resources}
+    assert records["run"] == records["lazy"] == ""
+    assert "docs_fix_undescribed" not in sys.modules
+    # Its /info, once loaded, still has the code's description.
+    assert strategy.tactics()["run"].info().description == "Described in code."
