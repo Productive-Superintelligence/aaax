@@ -375,7 +375,9 @@ server's environment before any package code is imported. In a terminal,
 `--no-keyring`, which refuses `--credentials keyring`); otherwise it stops
 and lists them. A default `.env.local` that cannot be read, a symlink
 included (even a broken one), counts as absent, and the message says why;
-keys are not asked for when they would have to go to that file:
+keys are not asked for when they would have to go to that file. An env
+file you name with `--env-file` must be a readable file, not a symlink,
+or the command stops before it asks for anything:
 
 ```text
 $ aaax serve support-desk

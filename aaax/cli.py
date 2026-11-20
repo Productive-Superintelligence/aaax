@@ -156,18 +156,21 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
     env_file = ".env.local" if args.env_file is None else args.env_file
     read_from: str | None = env_file
     unread = ""  # why the default env file was not read, if it was not
-    if args.env_file is None:
-        try:
-            if os.path.islink(env_file):
-                # read_env_file sees nothing at a dangling or looping
-                # symlink, but keys written there would be lost.
-                raise CredentialError("env file must be a regular file")
-            read_env_file(env_file)
-        except (CredentialError, OSError, ValueError) as exc:
-            # An unreadable default env file counts as absent, but the
-            # error for missing keys says why.
-            read_from = None
-            unread = f"{env_file} was not read: {exc}. Name another env file with --env-file."
+    try:
+        if os.path.islink(env_file):
+            # lllm-core 0.4.0's read_env_file sees nothing at a dangling or
+            # looping symlink, and its write_env_file would write keys typed
+            # here into the link's target; 0.4.1 refuses the link itself.
+            raise CredentialError("env file must be a regular file")
+        read_env_file(env_file)
+    except (CredentialError, OSError, ValueError) as exc:
+        if args.env_file is not None:
+            # One named on the command line must be readable.
+            parser.error(str(exc))
+        # An unreadable default env file counts as absent, but the error for
+        # missing keys says why.
+        read_from = None
+        unread = f"{env_file} was not read: {exc}. Name another env file with --env-file."
     use_keyring = not args.no_keyring
     # Keys stored in the keyring would not be found again under --no-keyring.
     credentials = "env" if args.no_keyring else args.credentials
@@ -179,7 +182,8 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
         )
         if not resolution.ok and sys.stdin.isatty():
             if unread and choose_credential_backend(credentials) == "env":
-                # Keys typed now would be lost: the file cannot take them.
+                # Keys typed now could not be stored in that file: writing
+                # would fail, or go through a symlink to its target.
                 _missing_keys(parser, resolution, setup, unread)
             backend = configure_missing_api_keys(
                 resolution.missing,

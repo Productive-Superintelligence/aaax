@@ -917,8 +917,8 @@ def _unreadable_env_file(kind: str) -> None:
 def test_a_symlink_as_the_default_env_file_counts_as_unreadable(
     tmp_path: Path, serve_here, capsys, kind
 ):
-    # lllm's read_env_file sees nothing at a broken symlink, as if there
-    # were no file, but keys written there would be lost.
+    # lllm-core 0.4.0's read_env_file sees nothing at a broken symlink, as
+    # if there were no file, and keys written there go to the link's target.
     _keyed_package(tmp_path / "keyed")
     _unreadable_env_file(kind)
 
@@ -938,7 +938,7 @@ def test_keys_are_not_asked_for_when_they_could_not_be_stored(
     tmp_path: Path, serve_here, monkeypatch, capsys, argv, kind
 ):
     # Typed into a terminal, they would go to the env file, which cannot be
-    # read, and so cannot be written either: they would be lost.
+    # read: writing it would fail, or go through a symlink to its target.
     _keyed_package(tmp_path / "keyed")
     _unreadable_env_file(kind)
     monkeypatch.setattr(lllm.credentials, "keyring_available", lambda: False)
@@ -954,6 +954,28 @@ def test_keys_are_not_asked_for_when_they_could_not_be_stored(
     assert MISSING_KEY in err
     assert ".env.local was not read" in err
     assert "--env-file" in err
+    assert serve_here == []
+
+
+@pytest.mark.parametrize("terminal", [True, False], ids=["terminal", "no-terminal"])
+def test_an_env_file_named_on_the_command_line_that_is_a_symlink_stops_serve(
+    tmp_path: Path, serve_here, monkeypatch, capsys, terminal
+):
+    # lllm-core 0.4.0 reads nothing at a dangling symlink, then writes typed
+    # keys into its target, and the check after that refuses the link.
+    _keyed_package(tmp_path / "keyed")
+    os.symlink("elsewhere.env", "keys.env")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: terminal)
+
+    def configure(*args, **kwargs):
+        raise AssertionError("asked for keys")
+
+    monkeypatch.setattr(lllm.credentials, "configure_missing_api_keys", configure)
+
+    err = _serve_error(capsys, ["serve", "keyed", "--env-file", "keys.env", "--credentials", "env"])
+
+    assert "env file must be a regular file" in err
+    assert not Path("elsewhere.env").exists()
     assert serve_here == []
 
 
