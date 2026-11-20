@@ -156,6 +156,10 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
     unread = ""  # why the default env file was not read, if it was not
     if args.env_file is None:
         try:
+            if os.path.islink(env_file):
+                # read_env_file sees nothing at a dangling or looping
+                # symlink, but keys written there would be lost.
+                raise CredentialError("env file must be a regular file")
             read_env_file(env_file)
         except (CredentialError, OSError, ValueError) as exc:
             # An unreadable default env file counts as absent, but the

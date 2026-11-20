@@ -367,9 +367,9 @@ server's environment before any package code is imported. In a terminal,
 `aaax serve` asks for missing keys and stores them as `lllm setup` does
 (`--credentials auto`, `keyring`, or `env`; in the env file under
 `--no-keyring`, which refuses `--credentials keyring`); otherwise it stops
-and lists them. A default `.env.local` that cannot be read counts as
-absent, and the message says why; keys are not asked for when they would
-have to go to that file:
+and lists them. A default `.env.local` that cannot be read, a symlink
+included (even a broken one), counts as absent, and the message says why;
+keys are not asked for when they would have to go to that file:
 
 ```text
 $ aaax serve support-desk

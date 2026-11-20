@@ -844,16 +844,46 @@ def test_missing_keys_say_why_the_default_env_file_was_not_read(
     assert "--env-file" in err
 
 
+def _unreadable_env_file(kind: str) -> None:
+    """Make the default .env.local something that cannot be read as one."""
+
+    if kind == "folder":
+        Path(".env.local").mkdir()
+    elif kind == "dangling-symlink":
+        os.symlink("no-such-file", ".env.local")
+    else:  # a symlink to itself
+        os.symlink(".env.local", ".env.local")
+
+
+@pytest.mark.parametrize("kind", ["dangling-symlink", "looping-symlink"])
+def test_a_symlink_as_the_default_env_file_counts_as_unreadable(
+    tmp_path: Path, serve_here, capsys, kind
+):
+    # lllm's read_env_file sees nothing at a broken symlink, as if there
+    # were no file, but keys written there would be lost.
+    _keyed_package(tmp_path / "keyed")
+    _unreadable_env_file(kind)
+
+    err = _serve_error(capsys, ["serve", "keyed"])
+
+    assert MISSING_KEY in err
+    assert ".env.local was not read: env file must be a regular file" in err
+
+
+@pytest.mark.parametrize("kind", ["folder", "dangling-symlink"])
 @pytest.mark.parametrize(
-    "argv", [["--credentials", "env"], ["--no-keyring"]], ids=["env", "no-keyring"]
+    "argv",
+    [["--credentials", "env"], ["--no-keyring"], []],
+    ids=["env", "no-keyring", "auto-without-a-keyring"],
 )
 def test_keys_are_not_asked_for_when_they_could_not_be_stored(
-    tmp_path: Path, serve_here, monkeypatch, capsys, argv
+    tmp_path: Path, serve_here, monkeypatch, capsys, argv, kind
 ):
     # Typed into a terminal, they would go to the env file, which cannot be
     # read, and so cannot be written either: they would be lost.
     _keyed_package(tmp_path / "keyed")
-    Path(".env.local").mkdir()
+    _unreadable_env_file(kind)
+    monkeypatch.setattr(lllm.credentials, "keyring_available", lambda: False)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
     def configure(*args, **kwargs):
