@@ -268,7 +268,17 @@ def test_an_app_mounted_under_a_prefix_answers_tactic_not_found():
 
 @pytest.mark.parametrize(
     ("segment", "name"),
-    [("a;b", "a;b"), ("a:b", "a:b"), ("a%25b", "a%b"), ("a%5Cb", "a\\b"), ("%20", " ")],
+    [
+        ("a;b", "a;b"),
+        ("a:b", "a:b"),
+        ("a%25b", "a%b"),
+        ("a%5Cb", "a\\b"),
+        ("%20", " "),
+        ("%09", "\t"),  # whitespace as str.strip sees it, not only spaces
+        ("%C2%A0", "\xa0"),
+        ("%2E", "."),
+        ("%2E%2E", ".."),
+    ],
 )
 def test_a_not_found_name_lllm_errors_cannot_carry_still_gets_the_envelope(segment, name):
     client = TestClient(create_strategy_app(Strategy("desk")))

@@ -124,10 +124,12 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
     serves them all. When the environment has every key, nothing else is
     read. Otherwise a key counts when it is in the env file or in the OS
     keyring (unless ``--no-keyring``), and one found there is put in the
-    environment for the server; an unreadable default ``.env.local``
-    counts as absent. In a terminal, missing keys are asked for and stored
-    as `lllm setup` stores them (in the env file under ``--no-keyring``);
-    otherwise the command stops and lists them.
+    environment for the server. An unreadable default ``.env.local`` (a
+    symlink included) counts as absent, and the error for missing keys says
+    why. In a terminal, missing keys are asked for and stored as `lllm
+    setup` stores them (in the env file under ``--no-keyring``), except when
+    they would have to go to that unreadable default file: then, as without
+    a terminal, the command stops and lists them.
     """
 
     from lllm.credentials import (

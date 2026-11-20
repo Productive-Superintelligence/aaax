@@ -35,9 +35,11 @@ or `null`. Any other body, such as an object with other keys, a string, or
 a number, is the input itself; a body that is not JSON is its text, and an
 empty body is the input `null`. The body is decoded strictly as UTF-8;
 one that is not UTF-8 is the input as bytes when its content type is
-`application/octet-stream`, as on LLLM's tactic routes, and a 400
-`SchemaError` otherwise. `metadata` names the resource and the route
-(`resource` or `channel`), and is empty for `/run`.
+`application/octet-stream`, and a 400 `SchemaError` otherwise. LLLM's
+tactic routes read bodies so from lllm-core 0.4.1; with 0.4.0, the routes
+under `/tactics/` take any body that is not UTF-8 as bytes, and let
+UTF-8-encoded surrogates through. `metadata` names the resource and the
+route (`resource` or `channel`), and is empty for `/run`.
 
 The tactic services under `/tactics/{name}/` use LLLM's service envelopes:
 requests are `{"input": ..., "context": {...}}` with a `CallContext`-shaped
@@ -71,7 +73,9 @@ A `{name}` under `/tactics/` that no tactic is mounted under is a 404 in
 the error envelope below, with the type `TacticNotFound`, the message
 `Tactic not found: {name}`, and `tactic` set to `{name}`, as in LLLM's own
 multi-tactic services. `tactic` is `null` when LLLM's errors cannot carry
-the name: one with `;`, `:`, `%`, or `\`, only spaces, or `.` or `..`.
+the name: one with `;`, `:`, `%`, or `\`, one made only of whitespace as
+Python's `str.strip` sees it (spaces, tabs, newlines, no-break spaces, and
+more), or `.` or `..`.
 
 ## Errors
 
@@ -99,6 +103,11 @@ The strategy's routes report errors in LLLM's services error envelope:
 | 404 | The resource named in the URL does not exist, or a `/channels/` route names a resource that is not a channel. |
 | Its own | An `HTTPException` from the runner or a handler keeps its status and plain `detail`; a channel store error keeps the store API's code (404 not found, 409 conflict, 400 otherwise). |
 | 500 | Anything else the runner or a handler raises, including an `OutputSchemaError`, which lllm-core 0.4.1 and later raise for a result that fails its output schema; and a reply that cannot be encoded, such as bytes that are not UTF-8 or a string with a lone surrogate. |
+
+The cross-site check does not stop DNS rebinding. A local strategy app
+also needs a host allowlist, such as Starlette's `TrustedHostMiddleware`
+with `localhost` and `127.0.0.1`, or a token
+([Serving](../serving.md#your-own-server)).
 
 A body that does not validate is a 400 `SchemaError` with `endpoint` set to
 `null`. A tactic resource gets the status codes of `POST /tactics/{name}/run`

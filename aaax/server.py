@@ -19,8 +19,16 @@ a ``ValueError`` or ``SchemaError`` is a 400, except an ``OutputSchemaError``
 (lllm-core 0.4.1), a 500; channel store errors keep the store server's codes
 (404 not found, 409 conflict, 400 otherwise), and a remote store's 4xx errors
 keep the code its server returned; anything else is a 500, including a
-resource lookup that fails inside a handler. Every route refuses a cross-site
-POST whose body is not JSON with a 403.
+resource lookup that fails inside a handler.
+
+The app refuses, with a 403 ``CrossSiteRequestError``, the cross-site
+requests a browser sends for any web page without asking first: a POST whose
+body is not JSON, on every route, and a GET or HEAD to a mounted tactic's
+custom endpoints, which run its code (its built-in read routes stay open).
+``Sec-Fetch-Site`` decides whether a request is cross-site when it is
+present; otherwise ``Origin`` is compared with ``Host``. PUT, PATCH, and
+DELETE are never refused. ``create_strategy_app(...,
+allow_cross_site_requests=True)`` serves both kinds.
 """
 
 from __future__ import annotations
@@ -434,9 +442,11 @@ async def _run_request(request: Request) -> StrategyRunRequest:
     other keys included, is the input itself; a body that is not JSON is its
     text, and an empty body is ``None``. The body is decoded strictly as
     UTF-8: one that is not UTF-8 is the input as bytes when its content type
-    is ``application/octet-stream``, as on LLLM's tactic routes, and a 400
-    ``SchemaError`` otherwise, as is a malformed envelope, such as one whose
-    ``context`` is not an object.
+    is ``application/octet-stream``, and a 400 ``SchemaError`` otherwise, as
+    is a malformed envelope, such as one whose ``context`` is not an object.
+    LLLM's tactic routes read bodies so from lllm-core 0.4.1; 0.4.0's take
+    any body that is not UTF-8 as bytes, and let UTF-8-encoded surrogates
+    through.
     """
 
     raw = await request.body()

@@ -218,8 +218,9 @@ is empty for `/run`. A body is read as on the tactic routes: an object with
 other body is the input itself, so `{"text": "Hi"}` runs with that object
 as the input, and an empty body with `None`. A body that is not UTF-8 is
 the input as bytes when its content type is `application/octet-stream`,
-as on the tactic routes, and a 400 otherwise. `/resources/{name}/invoke`
-does what the resource calls for:
+and a 400 otherwise, as on the tactic routes from lllm-core 0.4.1 (with
+0.4.0 they take any body that is not UTF-8 as bytes).
+`/resources/{name}/invoke` does what the resource calls for:
 
 | Resource | `/resources/{name}/invoke` |
 | --- | --- |
@@ -418,3 +419,42 @@ before sending it, and the app allows none until you add FastAPI's
 `CORSMiddleware`. For an app that browsers on other origins must reach,
 build it with `create_strategy_app(strategy,
 allow_cross_site_requests=True)`.
+
+The check does not stop DNS rebinding, where a site makes its own domain
+resolve to `127.0.0.1` so that its requests look same-origin. A local
+strategy app also needs a host allowlist, such as Starlette's
+`TrustedHostMiddleware` with `localhost` and `127.0.0.1`, or a token as in
+LLLM's [Authentication](https://lllm.one/serving/#authentication):
+
+```python title="local.py"
+from fastapi.testclient import TestClient
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+from aaax import Strategy, create_strategy_app
+
+
+def triage(text: str) -> str:
+    return "oncall" if "outage" in text.lower() else "support"
+
+
+desk = Strategy("desk").tactic("triage", handler=triage)
+app = create_strategy_app(desk)
+app.add_middleware(
+    TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1"]
+)
+
+client = TestClient(app, base_url="http://127.0.0.1:8400")
+url = "/tactics/triage/run"
+page = {"origin": "https://evil.example", "content-type": "text/plain"}
+print(client.post(url, content="Outage", headers=page).status_code)
+#> 403
+body = {"input": "Outage"}
+rebound = {"host": "evil.example:8400"}  # (1)!
+print(client.post(url, json=body, headers=rebound).status_code)
+#> 400
+print(client.post(url, json=body).json()["output"])
+#> oncall
+```
+
+1. A rebound page's requests carry its own name in `Host`, which the
+   allowlist refuses before the tactic runs.
