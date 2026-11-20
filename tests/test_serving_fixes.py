@@ -201,7 +201,7 @@ def test_a_declared_description_reaches_the_tactic_info():
 def test_a_handler_docstring_fills_the_record_when_nothing_is_declared():
     strategy = Strategy("desk").tactic("words", handler=count_words)
     strategy.tactic("echo", handler=Echo())
-    strategy.tactic("bare", handler=lambda text: text)
+    strategy.resource("tactic", "bare", handler=lambda text: text)
     strategy.add_resource(StrategyResource(kind="tactic", name="long"), handler=count_words)
     strategy.add_tactic(Echo(), name="blank", description="")
     client = TestClient(create_strategy_app(strategy))
@@ -211,12 +211,33 @@ def test_a_handler_docstring_fills_the_record_when_nothing_is_declared():
         "words": "Count the words in a ticket.",
         "echo": "Echo the input.",
         "bare": "",
-        "long": "Count the words in a ticket.",
+        "long": "",  # add_resource adds the record as it was built
         "blank": "",  # add_tactic keeps a description given as ""
     }
-    for name in ("words", "echo", "bare", "long"):
+    for name in ("words", "echo", "bare"):
         info = client.get(f"/tactics/{name}/info").json()
         assert info["description"] == records[name]
+
+
+def test_strategy_subclasses_see_every_resource_through_add_resource(tmp_path: Path):
+    seen = []
+
+    class Recording(Strategy):
+        def add_resource(self, resource, *, handler=None):
+            seen.append((resource.kind, resource.name))
+            return super().add_resource(resource, handler=handler)
+
+    strategy = Recording("desk").add_tactic(Echo(), name="echo1", description="")
+    strategy.tactic("words", handler=count_words)
+    strategy.use_package(write_package(tmp_path / "pkg", channels=()), prefix="p")
+
+    assert seen == [
+        ("tactic", "echo1"),
+        ("tactic", "words"),
+        ("package", "p.analysis-pack"),
+        ("tactic", "p.echo"),
+    ]
+    assert strategy.resources[0].description == ""
 
 
 def _described_package(root: Path) -> Path:

@@ -186,21 +186,15 @@ class Strategy:
         *,
         handler: Handler | None = None,
     ) -> "Strategy":
-        """Add a resource; ``handler`` makes it callable.
+        """Add a resource, as it is; ``handler`` makes it callable.
 
         A channel resource without a handler is backed by :attr:`store`, see
-        :meth:`attach_store`. A tactic resource without a description takes
-        the description of the tactic it serves: a tactic's own, or a
-        function's docstring.
+        :meth:`attach_store`.
         """
 
         channel = None
         if handler is None and resource.kind == "channel":
             channel = {"description": resource.description}
-        if resource.kind == "tactic" and not resource.description:
-            description = _handler_description(handler)
-            if description:
-                resource = resource.model_copy(update={"description": description})
         return self._add_resource(resource, handler=handler, channel=channel)
 
     def _add_resource(
@@ -257,7 +251,7 @@ class Strategy:
         """
 
         info = tactic.info()
-        return self._add_resource(
+        return self.add_resource(
             StrategyResource(
                 kind="tactic",
                 name=name or info.name,
@@ -357,6 +351,16 @@ class Strategy:
         metadata: Mapping[str, Any] | None = None,
         handler: Handler | None = None,
     ) -> "Strategy":
+        """Add a resource of ``kind``; ``handler`` makes it callable.
+
+        A tactic resource added with a handler and no ``description`` is
+        described as the tactic it serves: by a tactic's own description, or
+        by a function's docstring. A package tactic, loaded on first use, is
+        not imported to tell.
+        """
+
+        if kind == "tactic" and not description:
+            description = _handler_description(handler)
         return self.add_resource(
             StrategyResource(
                 kind=kind,
