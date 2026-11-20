@@ -368,6 +368,31 @@ def test_a_body_that_is_neither_json_nor_utf8_text_is_a_400():
         assert error_detail(response)["message"] == "The request body must be JSON or UTF-8 text."
 
 
+def test_the_openapi_document_keeps_the_named_request_envelope():
+    # As AAAX 0.3 documented these routes, so clients generated from the
+    # document keep their types.
+    strategy = Strategy("desk").service("svc", handler=lambda value: value)
+    document = TestClient(create_strategy_app(strategy)).get("/openapi.json").json()
+
+    for path in ("/run", "/resources/{name}/invoke", "/channels/{name}/events"):
+        assert document["paths"][path]["post"]["requestBody"] == {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/StrategyRunRequest"}
+                }
+            },
+        }, path
+    schema = document["components"]["schemas"]["StrategyRunRequest"]
+    assert schema["title"] == "StrategyRunRequest"
+    assert list(schema["properties"]) == ["input", "task", "context"]
+    assert schema["properties"]["input"] == {"title": "Input"}
+    assert schema["properties"]["context"] == {
+        "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
+        "title": "Context",
+    }
+
+
 def test_a_channel_append_takes_the_event_fields_as_the_body_too():
     seen = []
 

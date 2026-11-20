@@ -59,11 +59,17 @@ from .strategy import (
 )
 
 # The routes that take a body read it themselves, by LLLM's envelope rules
-# (see _run_request), so FastAPI cannot infer it from a typed parameter;
-# their OpenAPI operations document the envelope instead.
+# (see _run_request), so FastAPI cannot document it from a typed parameter.
+# Their operations point at the StrategyRunRequest schema, as in AAAX 0.3,
+# and _document_envelope adds that schema to the app's document.
 _ENVELOPE_BODY = {
     "requestBody": {
-        "content": {"application/json": {"schema": StrategyRunRequest.model_json_schema()}},
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": {"$ref": "#/components/schemas/StrategyRunRequest"}
+            }
+        },
     },
 }
 
@@ -88,6 +94,7 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
     app.state.aaax_strategy = strategy
     # App-wide, so the mounted tactic services and /network/ are covered too.
     app.add_middleware(_CrossSitePostGuard)
+    _document_envelope(app)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -222,6 +229,35 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         # Another store has no /network/; serving it still creates its channels.
         strategy.store.open()
     return app
+
+
+def _document_envelope(app: FastAPI) -> None:
+    """Add the StrategyRunRequest schema the envelope routes point at to ``app``'s document.
+
+    It is the model's schema, encoded as FastAPI encodes the schemas it
+    generates, with ``task``, which the routes take in place of ``input``.
+    """
+
+    generate_openapi = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        document = generate_openapi()
+        schemas = document.setdefault("components", {}).setdefault("schemas", {})
+        if "StrategyRunRequest" not in schemas:
+            schema = jsonable_encoder(StrategyRunRequest.model_json_schema(), exclude_none=True)
+            properties = schema["properties"]
+            schema["properties"] = {
+                "input": properties["input"],
+                "task": {
+                    "title": "Task",
+                    "description": "The input, when input is missing or null.",
+                },
+                "context": properties["context"],
+            }
+            schemas["StrategyRunRequest"] = schema
+        return document
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
 class _CrossSitePostGuard:
