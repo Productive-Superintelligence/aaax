@@ -675,6 +675,31 @@ def test_the_depth_scan_stops_where_json_stops_reading():
         assert error_detail(response)["message"] == DEEP
 
 
+def test_a_recursion_error_from_json_loads_is_the_depth_400(monkeypatch):
+    # The scan refuses bodies json.loads would recurse into too deeply, but
+    # a RecursionError it raises anyway is the same 400.
+    import types
+
+    import aaax.server
+
+    def loads(text):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    # Only the server's reference: httpx and the app keep the real module.
+    monkeypatch.setattr(aaax.server, "json", types.SimpleNamespace(loads=loads))
+    ran: list[Any] = []
+    strategy = Strategy("desk")
+    strategy.runner(lambda value: ran.append(value) or "ran")
+    client = TestClient(create_strategy_app(strategy))
+
+    response = client.post("/run", content="[1]")
+
+    assert response.status_code == 400
+    assert error_detail(response)["type"] == "SchemaError"
+    assert error_detail(response)["message"] == DEEP
+    assert ran == []
+
+
 def test_a_big_body_is_read_off_the_event_loop():
     import httpx
 
