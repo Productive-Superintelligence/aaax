@@ -139,6 +139,10 @@ class Strategy:
         self._tactics: dict[str, Any] = {}
         # Store channels behind the channel resources that have no handler.
         self._channels: dict[str, dict[str, Any]] = {}
+        # The store channels add_package sets for the channel resources it is
+        # about to add: the manifest's, or None for a package mounted with
+        # bind=False, which adds the record only.
+        self._package_channels: dict[str, dict[str, Any] | None] = {}
         self._store: StrategyStore | None = None
         # The manifest files of the packages mounted with bind=True, whose
         # API keys `aaax serve` checks.
@@ -194,7 +198,8 @@ class Strategy:
 
         channel = None
         if handler is None and resource.kind == "channel":
-            channel = {"description": resource.description}
+            default = {"description": resource.description}
+            channel = self._package_channels.pop(resource.name, default)
         return self._add_resource(resource, handler=handler, channel=channel)
 
     def _add_resource(

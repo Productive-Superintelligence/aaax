@@ -184,28 +184,35 @@ def add_package(
         )
 
     for name, resource in manifest.channels.items():
-        channel = {
-            "schema": resource.schema,
-            "form": resource.form,
-            "description": resource.description,
-            "metadata": resource.metadata,
-        }
-        strategy._add_resource(
-            _strategy_resource(
-                manifest,
-                "channel",
-                name,
-                description=resource.description,
-                metadata={
-                    **resource.metadata,
-                    "schema": resource.schema,
-                    "form": resource.form,
-                    "store": None if store_root is None else str(store_root),
-                },
-                prefix=package_prefix,
-            ),
-            channel=channel if bind else None,
+        record = _strategy_resource(
+            manifest,
+            "channel",
+            name,
+            description=resource.description,
+            metadata={
+                **resource.metadata,
+                "schema": resource.schema,
+                "form": resource.form,
+                "store": None if store_root is None else str(store_root),
+            },
+            prefix=package_prefix,
         )
+        # add_resource backs a channel record with the store channel set
+        # here: the manifest's, or none for a package mounted for reference.
+        strategy._package_channels[record.name] = (
+            {
+                "schema": resource.schema,
+                "form": resource.form,
+                "description": resource.description,
+                "metadata": resource.metadata,
+            }
+            if bind
+            else None
+        )
+        try:
+            strategy.add_resource(record)
+        finally:
+            strategy._package_channels.pop(record.name, None)
 
     for name, resource in manifest.snapshots.items():
         strategy.add_resource(

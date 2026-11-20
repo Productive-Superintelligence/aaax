@@ -294,15 +294,31 @@ def test_strategy_subclasses_see_every_resource_through_add_resource(tmp_path: P
 
     strategy = Recording("desk").add_tactic(Echo(), name="echo1", description="")
     strategy.tactic("words", handler=count_words)
-    strategy.use_package(write_package(tmp_path / "pkg", channels=()), prefix="p")
+    package = write_package(tmp_path / "pkg")  # with an "events" channel
+    strategy.use_package(package, prefix="p")
+    strategy.use_package(package, prefix="ref", bind=False)
 
     assert seen == [
         ("tactic", "echo1"),
         ("tactic", "words"),
         ("package", "p.analysis-pack"),
         ("tactic", "p.echo"),
+        ("channel", "p.events"),
+        ("package", "ref.analysis-pack"),
+        ("tactic", "ref.echo"),
+        ("channel", "ref.events"),
     ]
     assert strategy.resources[0].description == ""
+    # The store channel behind a package channel is the manifest's; a
+    # package mounted for reference adds the record only.
+    assert strategy._channels["p.events"] == {
+        "schema": None,
+        "form": "log",
+        "description": "The events stream.",
+        "metadata": {},
+        "name": "p.events",
+    }
+    assert "ref.events" not in strategy._channels
 
 
 def _described_package(root: Path) -> Path:
