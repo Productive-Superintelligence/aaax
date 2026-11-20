@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import os
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
 from .models import StrategyResource
 from .strategy import Strategy, StrategyStore, _mounted_tactic, _tactic_ref
+
+# The folder of the strategy file that load_strategy is running, if any:
+# relative package paths in the file are resolved against it.
+_strategy_folder: ContextVar[Path | None] = ContextVar("aaax_strategy_folder", default=None)
 
 
 def strategy_from_package(
@@ -18,8 +25,13 @@ def strategy_from_package(
     store: str | Path | None = None,
     bind: bool = True,
 ) -> Strategy:
-    """Create a strategy from one LLLM hub package folder."""
+    """Create a strategy from one LLLM hub package folder.
 
+    In a strategy file that :func:`aaax.load_strategy` loads, a relative
+    ``path`` is relative to the file's folder.
+    """
+
+    path = _package_path(path)
     manifest = _load_manifest(path)
     strategy = Strategy(
         name or manifest.package.name,
@@ -56,8 +68,14 @@ def add_package(
     ``store`` other than the strategy's raises ``ValueError``. The store is
     opened, and the channels created, on first use, never while building or
     inspecting. ``bind=False`` adds metadata only.
+
+    In a strategy file that :func:`aaax.load_strategy` loads, a relative
+    ``path`` is relative to the file's folder, as if it were built from
+    ``Path(__file__).parent``; elsewhere it is relative to the working
+    directory.
     """
 
+    path = _package_path(path)
     manifest = _load_manifest(path)
     base_dir = manifest.base_dir or _manifest_base(path)
     package_prefix = _resource_prefix(prefix)
@@ -402,6 +420,29 @@ def _check_names(strategy: Strategy, manifest: Any, prefix: str | None) -> None:
             f"already has resources named {', '.join(taken)}. Mount it with a "
             "prefix to keep the names apart."
         )
+
+
+@contextmanager
+def _packages_relative_to(folder: Path) -> Iterator[None]:
+    """Resolve relative package paths against ``folder`` inside the block."""
+
+    token = _strategy_folder.set(folder)
+    try:
+        yield
+    finally:
+        _strategy_folder.reset(token)
+
+
+def _package_path(path: str | Path) -> str | Path:
+    """``path`` against the folder of the strategy file being loaded, if relative."""
+
+    folder = _strategy_folder.get()
+    if folder is None or not isinstance(path, (str, os.PathLike)):
+        return path
+    text = os.fspath(path)
+    if not isinstance(text, str) or not text or Path(text).expanduser().is_absolute():
+        return path
+    return folder / text
 
 
 def _load_manifest(path: str | Path) -> Any:

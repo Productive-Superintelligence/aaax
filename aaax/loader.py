@@ -11,12 +11,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from .packages import strategy_from_package
+from .packages import _packages_relative_to, strategy_from_package
 from .strategy import Strategy
 
 
 def load_strategy(target: str | Path) -> Strategy:
-    """Load a Strategy from `module:attr`, a `.py` file, or a directory."""
+    """Load a Strategy from `module:attr`, a `.py` file, or a directory.
+
+    While a strategy file runs, its ``build_strategy()`` included, relative
+    package paths it mounts are resolved against the file's folder.
+    """
 
     text = _target_text(target)
     path = Path(text).expanduser()
@@ -56,20 +60,23 @@ def _load_file(path: Path) -> Strategy:
             stacklevel=3,
         )
     module_name = f"_aaax_strategy_{abs(hash(path.resolve()))}"
-    with _import_path(path.parent):
-        spec = importlib.util.spec_from_file_location(module_name, path)
-        if spec is None or spec.loader is None:
-            raise ValueError(f"cannot import strategy file: {path}")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        try:
-            spec.loader.exec_module(module)
-        finally:
-            sys.modules.pop(module_name, None)
-    if hasattr(module, "build_strategy"):
-        return _coerce_strategy(module.build_strategy)
-    if hasattr(module, "strategy"):
-        return _coerce_strategy(module.strategy)
+    # Package paths in the file are relative to its folder, as if built from
+    # Path(__file__).parent (absolute, with symlinks left as they are).
+    with _packages_relative_to(path.absolute().parent):
+        with _import_path(path.parent):
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            if spec is None or spec.loader is None:
+                raise ValueError(f"cannot import strategy file: {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                sys.modules.pop(module_name, None)
+        if hasattr(module, "build_strategy"):
+            return _coerce_strategy(module.build_strategy)
+        if hasattr(module, "strategy"):
+            return _coerce_strategy(module.strategy)
     raise ValueError("strategy file must define build_strategy() or strategy")
 
 

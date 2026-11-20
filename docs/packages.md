@@ -108,7 +108,10 @@ ones are missing.
 `add_package(strategy, path, *, prefix=None, store=None, bind=True)` mounts
 a package into a strategy you already have, next to your own tactics and
 other packages. `strategy.use_package(path, ...)` is the same call as a
-method, and returns the strategy so calls chain.
+method, and returns the strategy so calls chain. A relative `path` is
+relative to the working directory, except in a strategy file that
+`aaax serve` or `load_strategy` loads, where it is relative to the file's
+folder ([Load a strategy from a file](strategies.md#load-a-strategy-from-a-file)).
 
 A package's names must not clash with names the strategy already has. A
 package that clashes is rejected before anything is added, and a `prefix`

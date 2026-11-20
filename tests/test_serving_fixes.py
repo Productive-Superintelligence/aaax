@@ -19,7 +19,7 @@ import lllm.credentials
 from lllm import Tactic
 from lllm.services import create_service_app
 
-from aaax import Strategy, StrategyResource, create_strategy_app
+from aaax import Strategy, StrategyResource, create_strategy_app, load_strategy
 from aaax.cli import main
 from helpers import error_detail, write_package
 
@@ -513,3 +513,45 @@ def test_a_ref_that_is_not_a_tactic_ref_labels_only_the_record():
     for name in ("probe", "own"):
         assert client.get(f"/tactics/{name}/info").json()["package_ref"] is None
         assert client.post(f"/tactics/{name}/run", json={"input": 1}).json()["output"] is None
+
+
+# Docs fix 7: relative package paths in a strategy file resolved against the
+# working directory, not the file's folder.
+
+
+def test_a_strategy_file_mounts_packages_relative_to_its_folder(
+    tmp_path: Path, monkeypatch, capsys
+):
+    project = tmp_path / "project"
+    package = write_package(project / "packages" / "desk", "desk", channels=())
+    (project / "strategy.py").write_text(
+        """
+from aaax import Strategy, add_package, strategy_from_package
+
+single = strategy_from_package("packages/desk")
+mounted = Strategy("mounted").use_package("packages/desk", prefix="top")
+
+
+def build_strategy():
+    strategy = Strategy("ops")
+    strategy.use_package("packages/desk", prefix="a")
+    add_package(strategy, "packages/desk/lllm.toml", prefix="b")
+    return strategy
+""".lstrip(),
+        encoding="utf-8",
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    for target in (project / "strategy.py", project, "../project/strategy.py"):
+        strategy = load_strategy(target)
+        assert {"a.echo", "b.echo"} <= {resource.name for resource in strategy.resources}
+    assert main(["inspect", "../project"]) == 0
+    assert "tactic a.echo lllm://demo/desk/tactics/echo" in capsys.readouterr().out
+    records = [resource for resource in strategy.resources if resource.kind == "package"]
+    assert [record.metadata["path"] for record in records] == [str(package.resolve())] * 2
+    # Outside a strategy file, relative paths stay relative to the working
+    # directory.
+    with pytest.raises(OSError):
+        Strategy("loose").use_package("packages/desk")

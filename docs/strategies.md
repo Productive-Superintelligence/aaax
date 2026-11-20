@@ -237,22 +237,19 @@ import path. `aaax inspect` and `aaax serve` load their target with it:
 | `module:attribute` | A `Strategy`, or a function that returns one, imported from the working directory |
 
 A strategy file runs with its folder on `sys.path`, so it can import the
-modules next to it. Paths inside it are relative to the working directory,
-not to the file; build them from `Path(__file__).parent` so the file works
-from anywhere:
+modules next to it. The package paths it mounts with `use_package`,
+`add_package`, or `strategy_from_package`, at the top of the file or in
+`build_strategy()`, are relative to its folder, so the file works from any
+working directory:
 
 ```python title="strategy.py"
-from pathlib import Path
-
 from aaax import Strategy
-
-HERE = Path(__file__).parent
 
 
 def build_strategy() -> Strategy:
     strategy = Strategy("ops", description="Support and billing.")
-    strategy.use_package(HERE / "packages/support-desk", prefix="support")
-    strategy.use_package(HERE / "packages/billing", prefix="billing")
+    strategy.use_package("packages/support-desk", prefix="support")
+    strategy.use_package("packages/billing", prefix="billing")
     return strategy
 ```
 
@@ -265,6 +262,12 @@ channel support.inbox lllm://demo/support-desk/channels/inbox
 package billing.billing lllm://demo/billing
 tactic billing.refund lllm://demo/billing/tactics/refund
 ```
+
+Other relative paths in the file, such as a store folder or a file it
+reads, are relative to the working directory; build those from
+`Path(__file__).parent`. A strategy imported as `module:attribute` is not
+run as a file, so its package paths are relative to the working directory
+too.
 
 `shell.py` is the file name LLLM 0.3's `lllm shell` loaded, and it still
 works. `aaax.py`, which AAAX 0.2 loaded, still loads with a
