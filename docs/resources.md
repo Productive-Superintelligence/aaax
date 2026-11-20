@@ -110,7 +110,8 @@ A resource's name and its ref answer different questions:
 The name is what callers type. It must be a non-empty path segment (no
 whitespace, `/`, `:`, `\`, or `%`, and not `.` or `..`), because it becomes
 a URL path such as `/tactics/kb.search/run`. Dots are allowed, and package
-prefixes use them.
+prefixes use them. A tactic that is served also cannot have `{` or `}` in
+its name, since they mark parameters in routes.
 
 The ref stays the same wherever the resource is mounted. A package gives
 each resource it declares `lllm://ORG/PACKAGE/SECTION/NAME`, and itself

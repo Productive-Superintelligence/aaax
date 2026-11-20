@@ -103,6 +103,33 @@ def test_a_function_mounted_under_a_name_lllm_cannot_hold_answers_under_its_own(
     assert invoked.json()["output"] == 2
 
 
+@pytest.mark.parametrize("name", ["ex{plain}", "{any}", "a{b", "a}b"])
+def test_a_tactic_named_with_braces_is_refused_when_the_app_is_built(name):
+    # Starlette reads {identifier} in /tactics/<name> as a path parameter.
+    strategy = Strategy("desk").add_tactic(Echo(), name=name)
+    strategy.tactic("{record}")  # listed only: it has no route
+
+    with pytest.raises(ValueError, match=re.escape(f"Tactic {name!r} cannot be served")):
+        create_strategy_app(strategy)
+
+
+def test_a_package_with_a_brace_named_tactic_can_be_inspected_not_served(
+    tmp_path: Path, monkeypatch, capsys
+):
+    package = _package_with_code(
+        tmp_path / "brace", "docs_fix_brace", "def run(value):\n    return value\n",
+        '"ex{plain}"', "run",
+    )
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: pytest.fail("served"))
+
+    assert main(["inspect", str(package)]) == 0
+    assert "tactic ex{plain} lllm://demo/brace/tactics/ex{plain}" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as exit_info:
+        main(["serve", str(package), "--skip-key-check"])
+    assert exit_info.value.code == 2
+    assert "Tactic 'ex{plain}' cannot be served" in capsys.readouterr().err
+
+
 # Docs fix 2: a name under /tactics/ that no tactic is mounted under got
 # Starlette's plain {"detail": "Not Found"}.
 

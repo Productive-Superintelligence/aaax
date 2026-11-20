@@ -204,8 +204,10 @@ segment: no whitespace, `/`, `:`, `\`, or `%`, and not `.` or `..`. Dots,
 dashes, and underscores are fine. Resource names become URL paths, such as
 `/tactics/{name}/run`, and the strategy's name follows the same rule. Both
 are checked when you build the strategy, not when a request arrives. Leave
-`;` out of tactic names too: LLLM's tactic names cannot hold it, so a
-tactic mounted under such a name answers under its own name.
+`;`, `{`, and `}` out of tactic names too. LLLM's tactic names cannot hold
+`;`, so a tactic mounted under such a name answers under its own name, and
+`{` and `}` mark parameters in routes, so building the app refuses a
+tactic whose name has one; `aaax inspect` still lists it.
 
 ```python title="names.py"
 from aaax import Strategy

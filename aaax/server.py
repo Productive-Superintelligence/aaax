@@ -100,6 +100,9 @@ def create_strategy_app(
     strategy with an sssn store raises ``ImportError``. A store that is not an
     sssn store is not mounted, and needs no sssn.
 
+    A tactic named with ``{`` or ``}``, which mark parameters in routes,
+    cannot be served: building the app raises ``ValueError``.
+
     The app refuses the cross-site requests a page on another site can make
     a visitor's browser send without asking first: a POST whose body is not
     JSON, and a GET or HEAD to a mounted tactic's custom endpoints, which
@@ -110,6 +113,14 @@ def create_strategy_app(
 
     if not isinstance(allow_cross_site_requests, bool):
         raise TypeError("allow_cross_site_requests must be a boolean.")
+    for name in strategy._tactics:
+        # Checked here, not when the tactic is added, so a package that
+        # declares one can still be inspected.
+        if "{" in name or "}" in name:
+            raise ValueError(
+                f"Tactic {name!r} cannot be served: '{{' and '}}' mark parameters in "
+                f"routes, so /tactics/{name}/ would match other paths. Rename it."
+            )
     from . import __version__
 
     app = FastAPI(

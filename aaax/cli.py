@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
             _ensure_api_keys(parser, strategy, args)
         try:
             app = create_strategy_app(strategy)
-        except ImportError as exc:  # e.g. a channel store without sssn
+        except (ImportError, ValueError) as exc:  # a store without sssn, a bad name
             parser.error(str(exc))
         import uvicorn
 
