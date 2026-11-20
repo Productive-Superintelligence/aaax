@@ -24,12 +24,14 @@ a 500, including a resource lookup that fails inside a handler.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from lllm.protocol import SchemaError, TacticUnsupportedError
@@ -48,6 +50,15 @@ from .strategy import (
     _is_sssn_store,
     _require_sssn,
 )
+
+# The routes that take a body read it themselves, by LLLM's envelope rules
+# (see _run_request), so FastAPI cannot infer it from a typed parameter;
+# their OpenAPI operations document the envelope instead.
+_ENVELOPE_BODY = {
+    "requestBody": {
+        "content": {"application/json": {"schema": StrategyRunRequest.model_json_schema()}},
+    },
+}
 
 
 def create_strategy_app(strategy: Strategy) -> FastAPI:
@@ -71,7 +82,7 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
-        error = SchemaError(_validation_message(exc))
+        error = SchemaError(_validation_message(exc.errors()))
         return JSONResponse(status_code=400, content={"detail": _error_payload(error)})
 
     @app.get("/health")
@@ -128,25 +139,28 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         response = await _invoke(strategy, name, request, endpoint="channel")
         return response.model_dump()
 
-    @app.post("/channels/{name}/events", response_model=StrategyRunResponse)
-    async def append_channel_event(
-        name: str,
-        request: StrategyRunRequest,
-    ) -> StrategyRunResponse:
-        if not isinstance(request.input, dict):
+    @app.post(
+        "/channels/{name}/events",
+        response_model=StrategyRunResponse,
+        openapi_extra=_ENVELOPE_BODY,
+    )
+    async def append_channel_event(name: str, request: Request) -> StrategyRunResponse:
+        envelope = await _run_request(request)
+        if not isinstance(envelope.input, dict):
             # The input holds the event fields; anything else would be dropped.
             error = SchemaError("input must be an object with the event fields")
             raise _http_error(error, endpoint="channel", resource=name, status_code=400)
-        request = StrategyRunRequest(
-            input={**request.input, "op": "append"},
-            context=request.context,
+        envelope = StrategyRunRequest(
+            input={**envelope.input, "op": "append"},
+            context=envelope.context,
         )
-        return await _invoke(strategy, name, request, endpoint="channel")
+        return await _invoke(strategy, name, envelope, endpoint="channel")
 
-    @app.post("/run", response_model=StrategyRunResponse)
-    async def run(request: StrategyRunRequest) -> StrategyRunResponse:
+    @app.post("/run", response_model=StrategyRunResponse, openapi_extra=_ENVELOPE_BODY)
+    async def run(request: Request) -> StrategyRunResponse:
+        envelope = await _run_request(request)
         try:
-            output = await strategy.arun(request.input, context=request.context)
+            output = await strategy.arun(envelope.input, context=envelope.context)
         except StarletteHTTPException:
             raise
         except Exception as exc:
@@ -156,11 +170,12 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
             strategy=strategy.name,
         )
 
-    @app.post("/resources/{name}/invoke", response_model=StrategyRunResponse)
-    async def invoke_resource(
-        name: str,
-        request: StrategyRunRequest,
-    ) -> StrategyRunResponse:
+    @app.post(
+        "/resources/{name}/invoke",
+        response_model=StrategyRunResponse,
+        openapi_extra=_ENVELOPE_BODY,
+    )
+    async def invoke_resource(name: str, request: Request) -> StrategyRunResponse:
         """Call a resource's handler.
 
         A tactic resource runs as ``POST /tactics/{name}/run`` runs it: the
@@ -169,7 +184,8 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         the ``context`` as a plain object.
         """
 
-        return await _invoke(strategy, name, request, endpoint="resource")
+        envelope = await _run_request(request)
+        return await _invoke(strategy, name, envelope, endpoint="resource")
 
     for name, tactic in strategy.tactics().items():
         app.mount(f"/tactics/{name}", create_tactic_app(tactic))
@@ -195,6 +211,39 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         # Another store has no /network/; serving it still creates its channels.
         strategy.store.open()
     return app
+
+
+async def _run_request(request: Request) -> StrategyRunRequest:
+    """The body of a strategy route, read as LLLM's tactic routes read theirs.
+
+    A JSON object whose keys are ``input`` or ``task``, and optionally
+    ``context``, is an envelope: its ``input``, or its ``task`` when the
+    input is missing or null, is the input. Any other body, an object with
+    other keys included, is the input itself; a body that is not JSON is its
+    text, and an empty body is ``None``. A malformed envelope, such as one
+    whose ``context`` is not an object, is a 400 ``SchemaError``.
+    """
+
+    try:
+        body = await request.json()
+    except Exception:  # not JSON, or empty
+        raw = await request.body()
+        try:
+            body = raw.decode("utf-8") if raw else None
+        except UnicodeDecodeError:
+            body = raw
+    keys = set(body) if isinstance(body, dict) else set()
+    if not (keys & {"input", "task"} and keys <= {"input", "task", "context"}):
+        return StrategyRunRequest(input=body)
+    value = body.get("input")
+    try:
+        return StrategyRunRequest(
+            input=body.get("task") if value is None else value,
+            context=body.get("context"),
+        )
+    except ValidationError as exc:
+        error = SchemaError(_validation_message(exc.errors()))
+        raise HTTPException(status_code=400, detail=_error_payload(error)) from exc
 
 
 async def _invoke(
@@ -292,9 +341,9 @@ def _status_code(exc: Exception, *, tactic: bool = False) -> int:
     return 500
 
 
-def _validation_message(exc: RequestValidationError) -> str:
+def _validation_message(errors: Sequence[Mapping[str, Any]]) -> str:
     messages = []
-    for error in exc.errors():
+    for error in errors:
         location = ".".join(str(part) for part in error.get("loc", ()) if part != "body")
         message = str(error.get("msg") or "Invalid request.")
         messages.append(f"{location}: {message}" if location else message)

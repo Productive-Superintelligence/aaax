@@ -232,3 +232,80 @@ def test_a_package_tactic_info_uses_the_manifest_when_its_code_has_none(tmp_path
     # The code's own description and examples come first.
     assert coded["description"] == "Described in code."
     assert coded["examples"] == [{"input": "from code"}]
+
+
+# Docs fix 4: the strategy's own routes ignored unknown body keys, ran with
+# the input None when "input" was missing, and did not take "task", unlike
+# LLLM's tactic routes.
+
+ENVELOPE_BODIES = [
+    {"input": 1},
+    {"task": 2},
+    {"input": None, "task": 3},
+    {"input": 4, "task": 5},
+    {"input": 6, "context": {"metadata": {"user": "ada"}}},
+    {"text": "not an envelope"},
+    {"input": 7, "extra": 8},
+    {"context": {"metadata": {}}},
+    {},
+    "text",
+    42,
+    [1, 2],
+    None,  # no body at all
+]
+
+
+def test_strategy_routes_read_a_body_as_lllms_tactic_routes_do():
+    strategy = Strategy("desk").add_tactic(Echo())
+    strategy.service("svc", handler=lambda value: value)
+    strategy.runner(lambda value: value)
+    client = TestClient(create_strategy_app(strategy))
+
+    for body in ENVELOPE_BODIES:
+        expected = client.post("/tactics/echo/run", json=body)
+        assert expected.status_code == 200, body
+        for route in ("/run", "/resources/svc/invoke", "/resources/echo/invoke"):
+            response = client.post(route, json=body)
+            assert response.status_code == 200, (route, body)
+            assert response.json()["output"] == expected.json()["output"], (route, body)
+    text = {"content": "plain words", "headers": {"content-type": "text/plain"}}
+    assert client.post("/tactics/echo/run", **text).json()["output"] == "plain words"
+    assert client.post("/run", **text).json()["output"] == "plain words"
+
+
+def test_an_envelope_passes_its_context_and_a_bad_context_is_a_400():
+    strategy = Strategy("desk")
+    strategy.service("ctx", handler=lambda value, context=None: [value, context])
+    client = TestClient(create_strategy_app(strategy))
+
+    body = {"task": "refund", "context": {"user": "ada"}}
+    output = client.post("/resources/ctx/invoke", json=body).json()["output"]
+    bad = client.post("/resources/ctx/invoke", json={"input": 1, "context": "nope"})
+
+    assert output == ["refund", {"user": "ada"}]
+    assert bad.status_code == 400
+    assert error_detail(bad)["type"] == "SchemaError"
+    assert error_detail(bad)["message"] == "context: Input should be a valid dictionary"
+    assert error_detail(bad)["endpoint"] is None
+
+
+def test_a_channel_append_takes_the_event_fields_as_the_body_too():
+    seen = []
+
+    def feed(value=None, *, context=None):
+        seen.append(value)
+        return value
+
+    client = TestClient(create_strategy_app(Strategy("srv").channel("feed", handler=feed)))
+
+    raw = client.post("/channels/feed/events", json={"payload": 1, "kind": "note"})
+    wrapped = client.post("/channels/feed/events", json={"input": {"payload": 2}})
+    text = client.post("/channels/feed/events", json="just text")
+
+    assert raw.status_code == wrapped.status_code == 200
+    assert seen == [
+        {"payload": 1, "kind": "note", "op": "append"},
+        {"payload": 2, "op": "append"},
+    ]
+    assert text.status_code == 400
+    assert error_detail(text)["message"] == "input must be an object with the event fields"

@@ -28,9 +28,13 @@ and return a `StrategyRunResponse`:
 }
 ```
 
-These routes read only `input` and `context`: other keys are ignored, so a
-body without `input` runs with the input `None`. `metadata` names the
-resource and the route (`resource` or `channel`), and is empty for `/run`.
+These routes read a body by the rules of LLLM's tactic routes. An object
+whose keys are `input` or `task`, and optionally `context`, is the
+envelope: its `input` is the input, or its `task` when `input` is missing
+or `null`. Any other body, such as an object with other keys, a string, or
+a number, is the input itself; a body that is not JSON is its text, and an
+empty body is the input `null`. `metadata` names the resource and the route
+(`resource` or `channel`), and is empty for `/run`.
 
 The tactic services under `/tactics/{name}/` use LLLM's service envelopes:
 requests are `{"input": ..., "context": {...}}` with a `CallContext`-shaped

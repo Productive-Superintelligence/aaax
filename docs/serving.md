@@ -192,13 +192,13 @@ Unknown keys are ignored, and a `context` that is not an object, or has
 `metadata` or `tags` that are not objects, is a 400 `SchemaError`. As in
 any LLLM service, a body that is not an envelope is taken as the input
 itself, and `task` works in place of `input`; the strategy's own routes,
-below, take only the envelope.
+below, read a body the same way.
 
 ## The strategy's routes
 
-`/run`, `/resources/{name}/invoke`, and `/channels/{name}/events` take a
-`StrategyRunRequest`, `{"input": ..., "context": {...}}`, and answer with a
-`StrategyRunResponse`:
+`/run`, `/resources/{name}/invoke`, and `/channels/{name}/events` take the
+same envelope, `{"input": ..., "context": {...}}` (a `StrategyRunRequest`),
+and answer with a `StrategyRunResponse`:
 
 ```json
 {
@@ -209,9 +209,11 @@ below, take only the envelope.
 ```
 
 `metadata` names the resource and the route (`resource` or `channel`), and
-is empty for `/run`. Other keys in the body are ignored, so a body without
-`input` runs with the input `None`.
-`/resources/{name}/invoke` does what the resource calls for:
+is empty for `/run`. A body is read as on the tactic routes: an object with
+`input` or `task`, and at most `context` besides, is an envelope, and any
+other body is the input itself, so `{"text": "Hi"}` runs with that object
+as the input, and an empty body with `None`. `/resources/{name}/invoke`
+does what the resource calls for:
 
 | Resource | `/resources/{name}/invoke` |
 | --- | --- |

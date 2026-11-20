@@ -61,7 +61,13 @@ class StrategyInfo(BaseModel):
 
 
 class StrategyRunRequest(BaseModel):
-    """Request envelope for strategy calls."""
+    """Request envelope for strategy calls.
+
+    The strategy's routes read a body by the rules of LLLM's tactic routes:
+    an object with ``input`` or ``task`` (used when ``input`` is missing or
+    null), and at most ``context`` besides, is this envelope; any other body
+    is the input itself.
+    """
 
     input: Any = None
     context: dict[str, Any] | None = None

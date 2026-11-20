@@ -426,7 +426,10 @@ def test_invalid_input_is_a_400_envelope(tmp_path: Path):
         json={"input": {"payload": 1, "kind": "not a token"}},
     )
     handler_error = client.get("/channels/events/events", params={"limit": 0})
-    body_error = client.post("/resources/events/invoke", json={"context": "nope"})
+    body_error = client.post(
+        "/resources/events/invoke",
+        json={"input": {"op": "query"}, "context": "nope"},
+    )
     query_error = client.get("/channels/events/events", params={"limit": "many"})
 
     assert store_error.status_code == 400
@@ -526,7 +529,7 @@ def test_other_remote_store_failures_stay_500():
         {"input": ["x", "y"]},
         {"input": 3},
         {"input": None},
-        {"payload": "outside the input envelope"},
+        {"task": "hello world"},
     ],
 )
 def test_channel_append_rejects_a_non_object_input(tmp_path: Path, body: dict[str, Any]):
@@ -549,6 +552,21 @@ def test_channel_append_rejects_a_non_object_input(tmp_path: Path, body: dict[st
     appended = client.post("/channels/log/events", json={"input": {"payload": "kept"}})
     assert appended.status_code == 200
     assert [event.payload for event in store.query_events("log")] == ["kept"]
+
+
+def test_channel_append_takes_event_fields_sent_without_an_envelope(tmp_path: Path):
+    # Docs fix 4: a body that is not an envelope is the input itself, as on
+    # LLLM's tactic routes, so these fields are appended as they were sent.
+    store = LocalStore(tmp_path / "store")
+    strategy = Strategy("srv").channel("log").attach_store(store)
+    client = TestClient(create_strategy_app(strategy))
+
+    response = client.post("/channels/log/events", json={"payload": "sent", "kind": "note"})
+
+    assert response.status_code == 200
+    assert [(event.kind, event.payload) for event in store.query_events("log")] == [
+        ("note", "sent")
+    ]
 
 
 # SH6: building or inspecting a strategy never creates its store.
