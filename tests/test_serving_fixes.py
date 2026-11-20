@@ -693,6 +693,77 @@ def test_an_unreadable_default_env_file_counts_as_absent(
     assert "env file must be a regular file" in err
 
 
+def test_missing_keys_say_why_the_default_env_file_was_not_read(
+    tmp_path: Path, serve_here, capsys
+):
+    _keyed_package(tmp_path / "keyed")
+    Path(".env.local").mkdir()
+
+    err = _serve_error(capsys, ["serve", "keyed"])
+
+    assert MISSING_KEY in err
+    assert ".env.local was not read: env file must be a regular file" in err
+    assert "--env-file" in err
+
+
+@pytest.mark.parametrize(
+    "argv", [["--credentials", "env"], ["--no-keyring"]], ids=["env", "no-keyring"]
+)
+def test_keys_are_not_asked_for_when_they_could_not_be_stored(
+    tmp_path: Path, serve_here, monkeypatch, capsys, argv
+):
+    # Typed into a terminal, they would go to the env file, which cannot be
+    # read, and so cannot be written either: they would be lost.
+    _keyed_package(tmp_path / "keyed")
+    Path(".env.local").mkdir()
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    def configure(*args, **kwargs):
+        raise AssertionError("asked for keys it cannot store")
+
+    monkeypatch.setattr(lllm.credentials, "configure_missing_api_keys", configure)
+
+    err = _serve_error(capsys, ["serve", "keyed", *argv])
+
+    assert MISSING_KEY in err
+    assert ".env.local was not read" in err
+    assert "--env-file" in err
+    assert serve_here == []
+
+
+def test_keys_asked_for_go_to_the_keyring_when_the_default_env_file_is_unreadable(
+    tmp_path: Path, serve_here, monkeypatch
+):
+    _keyed_package(tmp_path / "keyed")
+    Path(".env.local").mkdir()
+    stored: dict[str, str] = {}
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(lllm.credentials, "keyring_get", lambda name: stored.get(name))
+
+    def configure(missing, *, credentials, env_file):
+        assert credentials == "keyring"
+        stored.update({requirement.name: "typed-in" for requirement in missing})
+        return "keyring"
+
+    monkeypatch.setattr(lllm.credentials, "configure_missing_api_keys", configure)
+
+    assert main(["serve", "keyed", "--credentials", "keyring"]) == 0
+    assert os.environ[KEY] == "typed-in"
+
+
+def test_no_keyring_with_credentials_keyring_is_refused_up_front(serve_here, capsys):
+    # Keys stored in the keyring could not be read back under --no-keyring.
+    err = _serve_error(
+        capsys,
+        ["serve", "no-such-target", "--no-keyring", "--credentials", "keyring", "--skip-key-check"],
+    )
+
+    assert (
+        "--no-keyring does not read the OS keyring, so --credentials keyring would "
+        "store keys it cannot see; use --credentials env"
+    ) in err
+
+
 def test_a_package_mounted_from_another_manifest_file_is_checked_from_it(
     tmp_path: Path, serve_here, capsys
 ):

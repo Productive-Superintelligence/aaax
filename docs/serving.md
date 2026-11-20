@@ -358,13 +358,16 @@ those of the resource `lllm serve` would launch
 ([API keys](https://lllm.one/packages/#api-keys)), and the keys each of
 its tactics declares, since AAAX serves them all. When the environment has
 every key, that is all. Otherwise a key also counts when it is in the env
-file (`--env-file`, default `.env.local`; an unreadable default counts as
-absent) or in the OS keyring, the two places `lllm setup` stores keys: the
-keyring when LLLM's `secure` extra is installed, the env file otherwise. A
-key found there is put in the server's environment before any package code
-is imported. In a terminal, `aaax serve` asks for missing keys and stores
-them as `lllm setup` does (`--credentials auto`, `keyring`, or `env`; in
-the env file under `--no-keyring`); otherwise it stops and lists them:
+file (`--env-file`, default `.env.local`) or in the OS keyring, the two
+places `lllm setup` stores keys: the keyring when LLLM's `secure` extra is
+installed, the env file otherwise. A key found there is put in the
+server's environment before any package code is imported. In a terminal,
+`aaax serve` asks for missing keys and stores them as `lllm setup` does
+(`--credentials auto`, `keyring`, or `env`; in the env file under
+`--no-keyring`, which refuses `--credentials keyring`); otherwise it stops
+and lists them. A default `.env.local` that cannot be read counts as
+absent, and the message says why; keys are not asked for when they would
+have to go to that file:
 
 ```text
 $ aaax serve support-desk

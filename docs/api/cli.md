@@ -74,7 +74,7 @@ it reads nothing else:
 | Option | Default | |
 | --- | --- | --- |
 | `--env-file` | `.env.local` | Env file to read keys from; an unreadable default counts as absent |
-| `--no-keyring` | off | Do not read keys from the OS keyring |
+| `--no-keyring` | off | Do not read keys from the OS keyring; not with `--credentials keyring` |
 | `--credentials` | `auto` | Where to store keys asked for in a terminal: `keyring`, `env`, or `auto`: the keyring if it is installed (LLLM's `secure` extra) and `--no-keyring` is off, else the env file |
 | `--skip-key-check` | off | Start without checking keys |
 

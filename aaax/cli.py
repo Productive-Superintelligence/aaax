@@ -59,6 +59,12 @@ def main(argv: list[str] | None = None) -> int:
             log_level = _serve_log_level(args.log_level)
         except ValueError as exc:
             parser.error(str(exc))
+        if args.no_keyring and args.credentials == "keyring":
+            # As lllm serve refuses it.
+            parser.error(
+                "--no-keyring does not read the OS keyring, so --credentials keyring "
+                "would store keys it cannot see; use --credentials env"
+            )
         strategy = _load_or_error(parser, args.target)
         if not args.skip_key_check:
             _ensure_api_keys(parser, strategy, args)
@@ -126,8 +132,8 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
 
     from lllm.credentials import (
         CredentialError,
+        choose_credential_backend,
         configure_missing_api_keys,
-        format_missing_requirements,
         read_env_file,
         resolve_api_keys,
     )
@@ -147,14 +153,18 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
         return
     env_file = ".env.local" if args.env_file is None else args.env_file
     read_from: str | None = env_file
+    unread = ""  # why the default env file was not read, if it was not
     if args.env_file is None:
         try:
             read_env_file(env_file)
-        except (CredentialError, OSError, ValueError):
-            read_from = None  # an unreadable default env file counts as absent
+        except (CredentialError, OSError, ValueError) as exc:
+            # An unreadable default env file counts as absent, but the
+            # error for missing keys says why.
+            read_from = None
+            unread = f"{env_file} was not read: {exc}. Name another env file with --env-file."
     use_keyring = not args.no_keyring
     # Keys stored in the keyring would not be found again under --no-keyring.
-    credentials = "env" if args.no_keyring and args.credentials == "auto" else args.credentials
+    credentials = "env" if args.no_keyring else args.credentials
     try:
         resolution = resolve_api_keys(
             requirements.values(),
@@ -162,6 +172,9 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
             use_keyring=use_keyring,
         )
         if not resolution.ok and sys.stdin.isatty():
+            if unread and choose_credential_backend(credentials) == "env":
+                # Keys typed now would be lost: the file cannot take them.
+                _missing_keys(parser, resolution, setup, unread)
             backend = configure_missing_api_keys(
                 resolution.missing,
                 credentials=credentials,
@@ -177,13 +190,28 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
         parser.error(str(exc))
         raise
     if not resolution.ok:
-        commands = dict.fromkeys(setup[requirement.name] for requirement in resolution.missing)
-        parser.error(
-            "missing required API key(s):\n"
-            f"{format_missing_requirements(resolution.missing)}\n\n"
-            f"Run {' and '.join(f'`{command}`' for command in commands)} "
-            "or set the missing names in your environment."
-        )
+        _missing_keys(parser, resolution, setup, unread)
+
+
+def _missing_keys(
+    parser: argparse.ArgumentParser,
+    resolution: Any,
+    setup: dict[str, str],
+    unread: str,
+) -> None:
+    """Stop with the missing keys, why the env file was not read, and how to set them."""
+
+    from lllm.credentials import format_missing_requirements
+
+    commands = dict.fromkeys(setup[requirement.name] for requirement in resolution.missing)
+    reason = f"{unread}\n" if unread else ""
+    parser.error(
+        "missing required API key(s):\n"
+        f"{format_missing_requirements(resolution.missing)}\n\n"
+        f"{reason}"
+        f"Run {' and '.join(f'`{command}`' for command in commands)} "
+        "or set the missing names in your environment."
+    )
 
 
 def _package_api_keys(manifest_file: Path) -> list[tuple[Any, str]]:
