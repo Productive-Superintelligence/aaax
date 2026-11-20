@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import lllm.cli
@@ -99,11 +100,15 @@ def test_an_unmounted_tactic_name_gets_lllms_tactic_not_found_envelope():
             ("POST", f"/tactics/{name}/stream"),
             ("GET", f"/tactics/{name}/info"),
             ("DELETE", f"/tactics/{name}/custom/route"),
+            ("OPTIONS", f"/tactics/{name}/run"),
             ("POST", f"/tactics/{name}"),
+            ("GET", f"/tactics/{name}/"),
         ]:
-            response = client.request(method, path, json={"input": 1})
-            assert response.status_code == expected.status_code == 404, path
-            assert response.json() == expected.json(), path
+            response = client.request(
+                method, path, json={"input": 1}, follow_redirects=False
+            )
+            assert response.status_code == expected.status_code == 404, (method, path)
+            assert response.json() == expected.json(), (method, path)
     assert error_detail(expected) == {
         "type": "TacticNotFound",
         "message": "Tactic not found: review",
@@ -119,6 +124,33 @@ def test_an_unmounted_tactic_name_gets_lllms_tactic_not_found_envelope():
         "echo",
         "review",
     ]
+
+
+def test_routes_added_under_tactics_after_the_app_is_built_still_answer():
+    app = create_strategy_app(Strategy("desk").add_tactic(Echo()))
+
+    @app.get("/tactics/extra/hello")
+    def hello():
+        return {"hello": True}
+
+    @app.get("/tactics/extra/gone")
+    def gone():
+        raise HTTPException(status_code=404, detail="gone")
+
+    more = FastAPI()
+    more.get("/ping")(lambda: "pong")
+    app.mount("/tactics/more", more)
+    client = TestClient(app)
+
+    assert client.get("/tactics/extra/hello").json() == {"hello": True}
+    assert client.get("/tactics/more/ping").json() == "pong"
+    # Their own 404s are theirs, not TacticNotFound.
+    assert client.get("/tactics/extra/gone").json() == {"detail": "gone"}
+    assert client.get("/tactics/more/nope").json() == {"detail": "Not Found"}
+    # A mounted tactic's bare path redirects to its app, as LLLM's do.
+    bare = client.get("/tactics/echo", follow_redirects=False)
+    assert bare.status_code == 307
+    assert bare.headers["location"].endswith("/tactics/echo/")
 
 
 def test_a_not_found_name_lllm_errors_cannot_carry_still_gets_the_envelope():

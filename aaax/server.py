@@ -24,17 +24,21 @@ a 500, including a resource lookup that fails inside a handler.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+from starlette.routing import Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from lllm.protocol import SchemaError, TacticUnsupportedError
@@ -89,6 +93,18 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
         error = SchemaError(_validation_message(exc.errors()))
         return JSONResponse(status_code=400, content={"detail": _error_payload(error)})
+
+    mounted: set[str] = set()
+
+    @app.exception_handler(404)
+    async def not_found(request: Request, exc: StarletteHTTPException) -> Response:
+        # A path under /tactics/ that no route or mount of the app matched,
+        # for a name no tactic is mounted under, gets the 404 that LLLM's
+        # multi-tactic app gives. Routes added to the app later still match.
+        name = _unmatched_tactic_name(request)
+        if name is not None and name not in mounted:
+            return JSONResponse(status_code=404, content={"detail": _tactic_not_found(name)})
+        return await http_exception_handler(request, exc)
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -194,17 +210,7 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
 
     for name, tactic in strategy.tactics().items():
         app.mount(f"/tactics/{name}", create_tactic_app(tactic))
-
-    # Added after the tactic mounts, which match first, so it answers only
-    # names that no tactic is mounted under.
-    @app.api_route(
-        "/tactics/{name}/{path:path}",
-        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        include_in_schema=False,
-    )
-    async def tactic_not_found(name: str) -> None:
-        raise HTTPException(status_code=404, detail=_tactic_not_found(name))
-
+        mounted.add(name)
     if strategy.store is not None and _is_sssn_store(strategy.store):
         _require_sssn()
         from sssn.server import create_app as create_store_app
@@ -363,6 +369,21 @@ def _http_error(
             metadata={} if resource is None else {"resource": resource},
         ),
     )
+
+
+def _unmatched_tactic_name(request: Request) -> str | None:
+    """The NAME of a ``/tactics/NAME[/...]`` path that no route of the app matched."""
+
+    scope = request.scope
+    path, root_path = scope["path"], scope.get("root_path", "")
+    if root_path and path.startswith(root_path):  # the app is mounted under root_path
+        path = path[len(root_path):]
+    found = re.fullmatch(r"/tactics/([^/]+)(?:/.*)?", path, re.DOTALL)
+    if found is None:
+        return None
+    if any(route.matches(scope)[0] is not Match.NONE for route in request.app.router.routes):
+        return None  # a route matched and raised the 404 itself
+    return found.group(1)
 
 
 def _tactic_not_found(name: str) -> dict[str, Any]:
