@@ -87,6 +87,7 @@ The strategy's routes report errors in LLLM's services error envelope:
 | Status | When |
 | --- | --- |
 | 400 | A malformed request, an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler. |
+| 403 | A POST from another site (an `Origin` header for another host and port, or `Sec-Fetch-Site: cross-site`) whose body is not JSON (`CrossSiteRequestError`), on any route, the mounted apps' included. |
 | 404 | The resource named in the URL does not exist, or a `/channels/` route names a resource that is not a channel. |
 | Its own | An `HTTPException` from the runner or a handler keeps its status and plain `detail`; a channel store error keeps the store API's code (404 not found, 409 conflict, 400 otherwise). |
 | 500 | Anything else the runner or a handler raises. |

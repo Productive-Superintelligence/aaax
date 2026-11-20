@@ -275,6 +275,7 @@ print(response.status_code, response.json())  # (1)!
 | Status | When, on the strategy's routes |
 | --- | --- |
 | 400 | A body that does not validate (`SchemaError`), an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler |
+| 403 | A cross-site POST whose body is not JSON (`CrossSiteRequestError`, [below](#your-own-server)) |
 | 404 | The URL names no resource, or a `/channels/` route names one that is not a channel (`ResourceNotFoundError`) |
 | 404, 409, 400 | A channel store error, with SSSN's codes: not found, conflict, anything else |
 | Its own | An `HTTPException` from the runner or a handler |
@@ -383,3 +384,13 @@ so one check guards every route; LLLM's
 bearer-token middleware that works here unchanged. AAAX does not manage
 TLS, replicas, workers, secrets, or deployment; those belong to whatever
 runs the app.
+
+A page on another site can make a visitor's browser POST a form or a text
+body to a server on their machine without asking it first, so the app
+refuses a cross-site POST whose body is not JSON: one with an `Origin`
+header for another host and port, or `Sec-Fetch-Site: cross-site`, gets a
+403 `CrossSiteRequestError`. Scripts and other servers send no `Origin`
+and are not affected. Browsers check a cross-origin JSON request against
+the app's CORS settings before sending it, and the app allows none until
+you add FastAPI's `CORSMiddleware`. Behind a proxy that rewrites the `Host`
+header, send JSON.

@@ -26,13 +26,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from lllm.protocol import SchemaError, TacticUnsupportedError
 from lllm.services import (
@@ -79,6 +82,8 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         version=__version__,
     )
     app.state.aaax_strategy = strategy
+    # App-wide, so the mounted tactic services and /network/ are covered too.
+    app.add_middleware(_CrossSitePostGuard)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -211,6 +216,67 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
         # Another store has no /network/; serving it still creates its channels.
         strategy.store.open()
     return app
+
+
+class _CrossSitePostGuard:
+    """Refuse a cross-site POST that is not JSON: browsers send one unasked.
+
+    A page on another site can make a visitor's browser POST a form or a
+    text body to the app, such as one served on 127.0.0.1, with no CORS
+    preflight; only JSON bodies are checked against the app's CORS settings
+    first. Such a POST carries an ``Origin`` header whose host and port are
+    not the ``Host`` header's, or ``Sec-Fetch-Site: cross-site``; unless its
+    body is JSON (``application/json`` or ``+json``), it is answered with a
+    403 in the services error envelope. Requests without those headers, from
+    scripts and servers, pass, and so do other methods: GET and HEAD read,
+    and a browser preflights every other method across origins.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["method"] == "POST" and _cross_site_form(scope):
+            error = ErrorDetail(
+                type="CrossSiteRequestError",
+                message=(
+                    "A cross-site POST must send JSON (Content-Type: application/json), "
+                    "which browsers check with the app's CORS settings first."
+                ),
+            )
+            content = {"detail": ErrorResponse(error=error).model_dump(mode="json")}
+            await JSONResponse(status_code=403, content=content)(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+def _cross_site_form(scope: Scope) -> bool:
+    """Whether a request comes from another site with a body that is not JSON."""
+
+    headers = Headers(scope=scope)
+    media_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type == "application/json" or media_type.endswith("+json"):
+        return False
+    if headers.get("sec-fetch-site", "").lower() == "cross-site":
+        return True
+    origin = headers.get("origin")
+    if origin is None:
+        return False
+    host = _host_and_port(f"{scope.get('scheme', 'http')}://{headers.get('host', '')}")
+    return host is None or _host_and_port(origin) != host
+
+
+def _host_and_port(url: str) -> tuple[str, int | None] | None:
+    """The host and port of ``url``, with the scheme's default port; None if it has none."""
+
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return None
+    if not parts.hostname:
+        return None  # an Origin of "null", for one
+    return parts.hostname, port or {"http": 80, "https": 443}.get(parts.scheme)
 
 
 async def _run_request(request: Request) -> StrategyRunRequest:

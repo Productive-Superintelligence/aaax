@@ -658,3 +658,75 @@ def test_the_api_reference_lists_every_export():
     documented = re.findall(r"^::: aaax\.\w+\.(\w+)$", index.read_text(), re.M)
 
     assert sorted(documented) == sorted(set(aaax.__all__) - {"__version__"})
+
+
+# Review 2: the strategy routes read any body, so a page on another site
+# could make a visitor's browser POST a form or text body to a strategy on
+# 127.0.0.1 without a CORS preflight.
+
+CROSS_SITE = {"origin": "https://evil.example"}
+TEXT = {"content-type": "text/plain"}
+
+
+def _guarded_client(calls: list[Any]) -> TestClient:
+    strategy = Strategy("desk").add_tactic(Echo())
+    strategy.runner(lambda value: calls.append(value) or "ran")
+    strategy.service("svc", handler=lambda value: calls.append(value) or "called")
+    strategy.channel("feed", handler=lambda value=None: calls.append(value) or "fed")
+    return TestClient(create_strategy_app(strategy))
+
+
+@pytest.mark.parametrize(
+    ("route", "headers", "body"),
+    [
+        ("/run", {**CROSS_SITE, **TEXT}, "x"),
+        ("/resources/svc/invoke", {**CROSS_SITE, "content-type": "application/x-www-form-urlencoded"}, "a=1"),
+        ("/channels/feed/events", {"sec-fetch-site": "cross-site"}, None),
+        ("/run", {"origin": "null", **TEXT}, "x"),
+        ("/run", {"origin": "http://testserver:8400", **TEXT}, "x"),
+        ("/tactics/echo/run", {**CROSS_SITE, "content-type": "multipart/form-data; boundary=b"}, "--b--"),
+    ],
+    ids=["text", "form", "fetch-metadata-no-body", "null-origin", "other-port", "mounted-tactic"],
+)
+def test_a_cross_site_post_that_is_not_json_is_refused(route, headers, body):
+    calls: list[Any] = []
+    client = _guarded_client(calls)
+
+    response = client.post(route, headers=headers, content=body)
+
+    assert response.status_code == 403
+    assert error_detail(response)["type"] == "CrossSiteRequestError"
+    assert "must send JSON" in error_detail(response)["message"]
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("headers", "body"),
+    [
+        ({**CROSS_SITE, "content-type": "application/json"}, '{"input": 1}'),
+        ({**CROSS_SITE, "content-type": "application/vnd.api+json; charset=utf-8"}, '{"input": 1}'),
+        ({"sec-fetch-site": "cross-site", "content-type": "application/json"}, '{"input": 1}'),
+        (TEXT, "from a script"),  # no Origin: not a browser
+        ({"origin": "http://testserver", **TEXT}, "same origin"),
+        ({"origin": "http://testserver:80", "sec-fetch-site": "same-origin", **TEXT}, "x"),
+    ],
+    ids=["json", "json-suffix", "fetch-metadata-json", "no-origin", "same-origin", "default-port"],
+)
+def test_json_non_browser_and_same_origin_posts_still_work(headers, body):
+    calls: list[Any] = []
+    client = _guarded_client(calls)
+
+    for route in ("/run", "/resources/svc/invoke", "/tactics/echo/run"):
+        assert client.post(route, headers=headers, content=body).status_code == 200, route
+    assert len(calls) == 2
+
+
+def test_cross_site_reads_and_preflights_are_not_refused():
+    client = _guarded_client([])
+
+    assert client.get("/strategy", headers={**CROSS_SITE, "sec-fetch-site": "cross-site"}).status_code == 200
+    preflight = client.options(
+        "/run",
+        headers={**CROSS_SITE, "access-control-request-method": "POST"},
+    )
+    assert preflight.status_code != 403
