@@ -445,8 +445,9 @@ async def _run_request(request: Request) -> StrategyRunRequest:
     text, and an empty body is ``None``. The body is decoded strictly as
     UTF-8: one that is not UTF-8 is the input as bytes when its content type
     is ``application/octet-stream``, and a 400 ``SchemaError`` otherwise, as
-    is a body nested more than 500 arrays and objects deep, and a malformed
-    envelope, such as one whose ``context`` is not an object.
+    is a body whose first value is an array or object nested more than 500
+    levels deep (brackets in strings aside), and a malformed envelope, such
+    as one whose ``context`` is not an object.
     LLLM's tactic routes read bodies so from lllm-core 0.4.1. With 0.4.0,
     they parse JSON in any UTF encoding (UTF-16 and UTF-32 included, and
     UTF-8-encoded surrogates pass through) and take any other body that is
@@ -482,9 +483,10 @@ def _body_value(raw: bytes, content_type: str) -> Any:
     lets UTF-8-encoded surrogates through to fail when the reply is encoded;
     then it is the JSON it parses as, or else its text, or None when empty.
     One that is not UTF-8 is bytes for ``application/octet-stream``, and a
-    ``SchemaError`` otherwise, as is one nested too deep. The depth is
-    checked before json.loads, so json.loads never recurses deeply in the
-    worker thread this runs in.
+    ``SchemaError`` otherwise, as is one whose first value is an array or
+    object nested more than 500 levels deep (brackets in strings aside).
+    The depth is checked before json.loads, so json.loads never recurses
+    deeply in the worker thread this runs in.
     """
 
     try:
@@ -504,9 +506,10 @@ def _body_value(raw: bytes, content_type: str) -> Any:
         return text or None  # not JSON: the text, or None for an empty body
 
 
-# How deep a body may nest arrays and objects. Deeper ones are refused
-# before they are parsed: code that walks such a value recursively, as a
-# native tactic's repr() of its task does in a worker thread, can overflow
+# How deep a body's first value, if it is an array or object, may nest
+# (brackets in strings aside). A body whose first value is nested deeper is
+# refused before it is parsed: code that walks such a value recursively, as
+# a native tactic's repr() of its task does in a worker thread, can overflow
 # a small thread stack and crash the process.
 _MAX_JSON_DEPTH = 500
 _JSON_STRUCTURE = re.compile(r'[\[\]{}"\\]')
