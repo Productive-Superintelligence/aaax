@@ -9,8 +9,10 @@ top: ``/strategy``, ``/resources``, channel shortcuts, and the strategy ``/run``
 The shell routes report errors in the services error envelope,
 ``{"detail": {"error": {"type": ..., "message": ...}}}``: a resource named in
 the URL that does not exist is a 404, as is a resource other than a channel on
-the ``/channels/`` routes, and a malformed request is a 400, including an event
-appended there whose input is not an object. A tactic resource fails with the
+the ``/channels/`` routes and a name under ``/tactics/`` that no tactic is
+mounted under (``TacticNotFound``, as LLLM's multi-tactic app answers), and a
+malformed request is a 400, including an event appended there whose input is
+not an object. A tactic resource fails with the
 status ``POST /tactics/<name>/run`` uses (400 for ``SchemaError`` and
 ``TacticUnsupportedError``, 500 for anything else, an ``HTTPException``
 included). Other handlers keep the status of an ``HTTPException`` they raise;
@@ -171,6 +173,17 @@ def create_strategy_app(strategy: Strategy) -> FastAPI:
 
     for name, tactic in strategy.tactics().items():
         app.mount(f"/tactics/{name}", create_tactic_app(tactic))
+
+    # Added after the tactic mounts, which match first, so it answers only
+    # names that no tactic is mounted under.
+    @app.api_route(
+        "/tactics/{name}/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        include_in_schema=False,
+    )
+    async def tactic_not_found(name: str) -> None:
+        raise HTTPException(status_code=404, detail=_tactic_not_found(name))
+
     if strategy.store is not None and _is_sssn_store(strategy.store):
         _require_sssn()
         from sssn.server import create_app as create_store_app
@@ -235,6 +248,17 @@ def _http_error(
             metadata={} if resource is None else {"resource": resource},
         ),
     )
+
+
+def _tactic_not_found(name: str) -> dict[str, Any]:
+    """The 404 detail LLLM's multi-tactic app gives for a tactic it does not serve."""
+
+    message = f"Tactic not found: {name}"
+    try:
+        error = ErrorDetail(type="TacticNotFound", message=message, tactic=name)
+    except ValueError:  # a name LLLM's errors cannot carry, such as one with ";"
+        error = ErrorDetail(type="TacticNotFound", message=message)
+    return ErrorResponse(error=error).model_dump(mode="json")
 
 
 def _error_payload(exc: Exception, **fields: Any) -> dict[str, Any]:

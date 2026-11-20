@@ -97,8 +97,9 @@ Each mounted app keeps its own docs: `/tactics/<name>/docs` and
 documents the store API. `GET /tactics` lists the tactic resource records,
 including tactics declared without a handler, which have no service. Names
 keep their dots, as in `/tactics/support.triage/run`. A name under
-`/tactics/` that is not mounted gets Starlette's plain 404, `{"detail":
-"Not Found"}`.
+`/tactics/` that no tactic is mounted under, such as a tactic declared
+without a handler, is a 404 with the type `TacticNotFound` in the error
+envelope, as in LLLM's own multi-tactic services.
 
 ## Tactic routes
 

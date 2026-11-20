@@ -56,8 +56,10 @@ name, also when the resource was renamed or prefixed.
 | `/network/...` | SSSN's store API (channels, events, subscriptions, artifacts, snapshots), when the strategy's channel store is an SSSN store |
 | `GET /docs`, `GET /openapi.json` | FastAPI's interactive docs and OpenAPI document for the routes above, apart from the mounted apps |
 
-A `{name}` under `/tactics/` that is not mounted gets Starlette's plain 404,
-`{"detail": "Not Found"}`.
+A `{name}` under `/tactics/` that no tactic is mounted under is a 404 in
+the error envelope below, with the type `TacticNotFound`, the message
+`Tactic not found: {name}`, and `tactic` set to `{name}`, as in LLLM's own
+multi-tactic services.
 
 ## Errors
 
