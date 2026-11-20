@@ -163,7 +163,8 @@ def create_strategy_app(
                 detail = _tactic_not_found(found.group(1))
                 if "app" in scope:
                     raise HTTPException(status_code=404, detail=detail)
-                await JSONResponse(status_code=404, content={"detail": detail})(scope, receive, send)
+                response = JSONResponse(status_code=404, content={"detail": detail})
+                await response(scope, receive, send)
                 return
         await not_found(scope, receive, send)
 
