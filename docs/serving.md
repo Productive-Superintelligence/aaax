@@ -379,7 +379,10 @@ keys are not asked for when they would have to go to that file. An env
 file you name with `--env-file` that exists must be a regular file you can
 read, not a symlink (even a broken one), or the command stops before it
 asks for anything; one that does not exist yet is created when keys are
-stored in it.
+stored in it. `~` and `~user` are expanded, also in `--env-file=~/...` and
+after a leading `./` (`./~name` is read as `~name`). One that cannot be
+expanded, such as `~` followed by an unknown user's name, is a usage
+error; name a file whose name begins with `~` by its absolute path.
 
 Without a terminal, missing keys stop the command with a message that
 names them and says how to set them:

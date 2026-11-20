@@ -1115,6 +1115,19 @@ def test_an_env_file_named_on_the_command_line_that_is_a_symlink_stops_serve(
     assert serve_here == []
 
 
+def test_an_env_file_named_from_home_is_read_there(tmp_path: Path, serve_here, monkeypatch):
+    # The working directory is not the home folder, so only ~ expanded to
+    # it finds the file, spelled with "=" as the shell leaves it.
+    _keyed_package(tmp_path / "keyed")
+    home = tmp_path / "home"
+    home.mkdir()
+    lllm.credentials.write_env_file(home / "keys.env", {KEY: "from-home"})
+    monkeypatch.setenv("HOME", str(home))
+
+    assert main(["serve", "keyed", "--env-file=~/keys.env"]) == 0
+    assert os.environ[KEY] == "from-home"
+
+
 @pytest.mark.parametrize("env_file", ["~docsfixnosuchuser/keys.env", "./~keys.env"])
 def test_an_env_file_whose_tilde_cannot_be_expanded_is_a_usage_error(
     tmp_path: Path, serve_here, capsys, env_file
