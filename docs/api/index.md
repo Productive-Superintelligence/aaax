@@ -10,6 +10,8 @@ Everything here is importable from `aaax`, as in `from aaax import Strategy`. Th
 
 ::: aaax.models.StrategyInfo
 
+::: aaax.strategy.ResourceNotFoundError
+
 ## Packages
 
 ::: aaax.packages.add_package

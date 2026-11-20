@@ -8,12 +8,13 @@ from .models import (
     StrategyRunResponse,
 )
 from .server import create_strategy_app
-from .strategy import Strategy
+from .strategy import ResourceNotFoundError, Strategy
 from .packages import add_package, strategy_from_package
 
 __version__ = "0.3.0"
 
 __all__ = [
+    "ResourceNotFoundError",
     "Strategy",
     "StrategyInfo",
     "StrategyResource",

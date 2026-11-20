@@ -6,7 +6,9 @@ channel store are tested in test_channels.py.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,8 @@ import lllm.credentials
 from lllm import Tactic
 from lllm.services import create_service_app
 
+import aaax
+import aaax.strategy
 from aaax import Strategy, StrategyResource, create_strategy_app, load_strategy
 from aaax.cli import main
 from helpers import error_detail, write_package
@@ -555,3 +559,20 @@ def build_strategy():
     # directory.
     with pytest.raises(OSError):
         Strategy("loose").use_package("packages/desk")
+
+
+# Docs fix 8: ResourceNotFoundError was importable only from aaax.strategy.
+
+
+def test_resource_not_found_error_is_exported_from_aaax():
+    assert aaax.ResourceNotFoundError is aaax.strategy.ResourceNotFoundError
+    assert "ResourceNotFoundError" in aaax.__all__
+    with pytest.raises(aaax.ResourceNotFoundError, match="Strategy resource not found"):
+        asyncio.run(Strategy("empty").invoke_resource("nope"))
+
+
+def test_the_api_reference_lists_every_export():
+    index = Path(__file__).resolve().parents[1] / "docs" / "api" / "index.md"
+    documented = re.findall(r"^::: aaax\.\w+\.(\w+)$", index.read_text(), re.M)
+
+    assert sorted(documented) == sorted(set(aaax.__all__) - {"__version__"})

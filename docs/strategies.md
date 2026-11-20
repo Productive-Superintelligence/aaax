@@ -191,8 +191,8 @@ print(output["resources"][0]["ref"])
 | `strategy.info()` | The `StrategyInfo`: name, description, resources, metadata |
 | `strategy.resources` | The resource records, in the order they were added |
 
-`invoke_resource` raises `aaax.strategy.ResourceNotFoundError`, a
-`KeyError`, for a name the strategy does not have. For a tactic resource,
+`invoke_resource` raises `aaax.ResourceNotFoundError`, a `KeyError`, for
+a name the strategy does not have. For a tactic resource,
 `context` is a `CallContext` or a dict of its fields; for any other
 resource, it is the plain dict the handler receives.
 
