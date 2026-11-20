@@ -20,7 +20,9 @@ from fastapi.testclient import TestClient
 
 import lllm.cli
 import lllm.credentials
+import lllm.protocol
 from lllm import Tactic
+from lllm.protocol import SchemaError
 from lllm.services import create_service_app
 
 import aaax
@@ -958,3 +960,33 @@ def test_cross_site_reads_and_preflights_are_not_refused():
         headers={**CROSS_SITE, "access-control-request-method": "POST"},
     )
     assert preflight.status_code != 403
+
+
+# Review 8: lllm-core 0.4.1 raises OutputSchemaError, a SchemaError, for an
+# output that fails its schema, and its services answer it with 500; the
+# strategy's runner and handlers answered every SchemaError with 400.
+
+
+def test_an_output_schema_error_from_the_runner_or_a_handler_is_a_500(monkeypatch):
+    class OutputSchemaError(SchemaError):
+        pass
+
+    monkeypatch.setattr(lllm.protocol, "OutputSchemaError", OutputSchemaError, raising=False)
+
+    def bad_output(value):
+        raise OutputSchemaError("the output does not match its schema")
+
+    def bad_input(value):
+        raise SchemaError("the input does not match its schema")
+
+    strategy = Strategy("desk")
+    strategy.runner(bad_output)
+    strategy.service("output", handler=bad_output)
+    strategy.service("input", handler=bad_input)
+    client = TestClient(create_strategy_app(strategy))
+
+    for route in ("/run", "/resources/output/invoke"):
+        response = client.post(route, json={"input": 1})
+        assert response.status_code == 500, route
+        assert error_detail(response)["type"] == "OutputSchemaError"
+    assert client.post("/resources/input/invoke", json={"input": 1}).status_code == 400

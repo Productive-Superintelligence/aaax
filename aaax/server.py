@@ -12,14 +12,15 @@ the URL that does not exist is a 404, as is a resource other than a channel on
 the ``/channels/`` routes and a name under ``/tactics/`` that no tactic is
 mounted under (``TacticNotFound``, as LLLM's multi-tactic app answers), and a
 malformed request is a 400, including an event appended there whose input is
-not an object. A tactic resource fails with the
-status ``POST /tactics/<name>/run`` uses (400 for ``SchemaError`` and
-``TacticUnsupportedError``, 500 for anything else, an ``HTTPException``
-included). Other handlers keep the status of an ``HTTPException`` they raise;
-a ``ValueError`` or ``SchemaError`` is a 400; channel store errors keep the
-store server's codes (404 not found, 409 conflict, 400 otherwise), and a
-remote store's 4xx errors keep the code its server returned; anything else is
-a 500, including a resource lookup that fails inside a handler.
+not an object. A tactic resource fails with the status
+``POST /tactics/<name>/run`` uses, LLLM's ``status_code_for_error``. The
+runner and other handlers keep the status of an ``HTTPException`` they raise;
+a ``ValueError`` or ``SchemaError`` is a 400, except an ``OutputSchemaError``
+(lllm-core 0.4.1), a 500; channel store errors keep the store server's codes
+(404 not found, 409 conflict, 400 otherwise), and a remote store's 4xx errors
+keep the code its server returned; anything else is a 500, including a
+resource lookup that fails inside a handler. Every route refuses a cross-site
+POST whose body is not JSON with a 403.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from starlette.responses import Response
 from starlette.routing import Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+import lllm.protocol
 from lllm.protocol import SchemaError, TacticUnsupportedError
 from lllm.services import (
     ErrorDetail,
@@ -461,6 +463,12 @@ def _status_code(exc: Exception, *, tactic: bool = False) -> int:
     ):
         # A remote store's server already mapped the store error.
         return exc.status_code
+    # lllm-core 0.4.1 raises OutputSchemaError, a SchemaError, for a result
+    # that fails its output schema: a bug in the code, which its services
+    # answer with 500. Looked up here, since lllm-core 0.4.0 has none.
+    output_error = getattr(lllm.protocol, "OutputSchemaError", None)
+    if output_error is not None and isinstance(exc, output_error):
+        return 500
     if isinstance(exc, (ValueError, SchemaError, TacticUnsupportedError)):
         return 400
     return 500

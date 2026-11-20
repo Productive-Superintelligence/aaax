@@ -87,14 +87,15 @@ The strategy's routes report errors in LLLM's services error envelope:
 
 | Status | When |
 | --- | --- |
-| 400 | A malformed request, an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler. |
+| 400 | A malformed request, an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler, except an `OutputSchemaError`. |
 | 403 | A POST from another site (an `Origin` header for another host and port, or `Sec-Fetch-Site: cross-site`) whose body is not JSON (`CrossSiteRequestError`), on any route, the mounted apps' included. |
 | 404 | The resource named in the URL does not exist, or a `/channels/` route names a resource that is not a channel. |
 | Its own | An `HTTPException` from the runner or a handler keeps its status and plain `detail`; a channel store error keeps the store API's code (404 not found, 409 conflict, 400 otherwise). |
-| 500 | Anything else the runner or a handler raises. |
+| 500 | Anything else the runner or a handler raises, including an `OutputSchemaError`, which lllm-core 0.4.1 and later raise for a result that fails its output schema. |
 
 A body that does not validate is a 400 `SchemaError` with `endpoint` set to
 `null`. A tactic resource gets the status codes of `POST /tactics/{name}/run`
-on both of its routes: 400 for `SchemaError` and `TacticUnsupportedError`,
-500 for anything else. SSSN's routes under `/network/` use the same envelope
-with only `type` and `message`.
+on both of its routes: 400 for `SchemaError` (other than an
+`OutputSchemaError`, a 500) and `TacticUnsupportedError`, 500 for anything
+else. SSSN's routes under `/network/` use the same envelope with only
+`type` and `message`.

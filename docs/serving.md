@@ -275,15 +275,18 @@ print(response.status_code, response.json())  # (1)!
 
 | Status | When, on the strategy's routes |
 | --- | --- |
-| 400 | A body that does not validate (`SchemaError`), an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler |
+| 400 | A body that does not validate (`SchemaError`), an appended event whose `input` is not an object, or a `ValueError`, `SchemaError`, or `TacticUnsupportedError` from the runner or a handler, except an `OutputSchemaError` |
 | 403 | A cross-site POST whose body is not JSON (`CrossSiteRequestError`, [below](#your-own-server)) |
 | 404 | The URL names no resource, or a `/channels/` route names one that is not a channel (`ResourceNotFoundError`) |
 | 404, 409, 400 | A channel store error, with SSSN's codes: not found, conflict, anything else |
 | Its own | An `HTTPException` from the runner or a handler |
-| 500 | Anything else the runner or a handler raises |
+| 500 | Anything else the runner or a handler raises, an `OutputSchemaError` included |
 
-A tactic fails the same way on both of its routes, with LLLM's codes: 400
-for `SchemaError` and `TacticUnsupportedError`, 500 for anything else,
+`OutputSchemaError` is the `SchemaError` that lllm-core 0.4.1 and later
+raise for a result that fails its output schema: the code's fault, not the
+caller's, so it is a 500. A tactic fails the same way on both of its
+routes, with LLLM's codes: 400 for `SchemaError` (but 500 for an
+`OutputSchemaError`) and `TacticUnsupportedError`, 500 for anything else,
 `ValueError` and `HTTPException` included. On `/tactics/...` the error
 carries the tactic's name and the `request_id`; on the strategy's routes
 `metadata.resource` names the resource. SSSN's routes under `/network/`
