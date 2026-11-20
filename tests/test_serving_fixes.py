@@ -614,11 +614,25 @@ def test_a_body_nested_more_than_500_levels_deep_is_a_400():
             assert error_detail(response)["type"] == "SchemaError"
             assert error_detail(response)["message"] == DEEP
     assert calls == []
-    # 500 levels are fine, and so are brackets in strings.
-    for body in (_nested(500), '{"a": "' + "[" * 20000 + '"}'):
+    # 500 levels are fine, and so are brackets in strings. Each of the
+    # bodies after the first two has more than 500 brackets, so it is read
+    # by the scan rather than passed by the bracket count.
+    import json as json_module
+
+    accepted = [
+        _nested(500),
+        '{"a": "' + "[" * 20000 + '"}',
+        json_module.dumps({"items": [{"id": i} for i in range(600)]}),
+        '{"b": [1], "a": ' + _nested(499) + "}",  # 500 deep, 501 brackets
+        '{"a": "\\"' + "[" * 600 + '"}',  # an escaped quote keeps the string open
+        '{"a": "x\\\\", "b": "' + "[" * 600 + '"}',  # an escaped backslash ends it
+    ]
+    for body in accepted:
+        json_module.loads(body)  # each is valid JSON
         for route in routes:
-            assert client.post(route, content=body).status_code == 200, route
-    assert calls == ["run", "svc", "feed"] * 2
+            response = client.post(route, content=body)
+            assert response.status_code == 200, (route, body[:30])
+    assert calls == ["run", "svc", "feed"] * len(accepted)
 
 
 def test_the_depth_scan_stops_where_json_stops_reading():
