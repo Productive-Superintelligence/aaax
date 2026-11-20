@@ -462,3 +462,54 @@ def test_lllm_shell_serve_checks_keys_with_the_same_options(
     assert MISSING_KEY in err
     assert lllm.cli.main(["shell", "serve", "keyed", "--skip-key-check"]) == 0
     assert len(serve_here) == 1
+
+
+# Docs fix 6: add_tactic(tactic, ref=...) only labeled the strategy's record:
+# the tactic's /info said package_ref null and requests had tactic_ref None.
+
+
+class RefProbe(Tactic[Any, Any]):
+    name = "probe"
+
+    def _run(self, input_value, *, context=None):
+        return context.tactic_ref
+
+
+def test_a_mounted_ref_reaches_the_served_tactic():
+    probe = RefProbe()
+    own = RefProbe(package_ref="lllm://acme/desk/tactics/own")
+    strategy = Strategy("desk")
+    strategy.add_tactic(probe, ref="lllm://acme/desk/tactics/probe")
+    strategy.add_tactic(probe, name="again", ref="lllm://acme/desk/tactics/again")
+    strategy.add_tactic(own, name="mounted", ref="lllm://acme/desk/tactics/mounted")
+    strategy.tactic(
+        "plain",
+        handler=lambda value, *, context=None: context.tactic_ref,
+        ref="lllm://acme/desk/tactics/plain",
+    )
+    client = TestClient(create_strategy_app(strategy))
+
+    for name in ("probe", "again", "mounted", "plain"):
+        ref = f"lllm://acme/desk/tactics/{name}"
+        assert client.get(f"/tactics/{name}/info").json()["package_ref"] == ref
+        run = client.post(f"/tactics/{name}/run", json={"input": 1})
+        invoked = client.post(f"/resources/{name}/invoke", json={"input": 1})
+        assert run.json()["output"] == invoked.json()["output"] == ref
+    # The tactics that were passed in keep their own refs.
+    assert probe.package_ref is None
+    assert own.package_ref == "lllm://acme/desk/tactics/own"
+
+
+def test_a_ref_that_is_not_a_tactic_ref_labels_only_the_record():
+    strategy = Strategy("desk")
+    strategy.add_tactic(RefProbe(), ref="lllm://acme/desk/channels/inbox")
+    strategy.add_tactic(RefProbe(), name="own", ref="desk-probe")
+    client = TestClient(create_strategy_app(strategy))
+
+    assert [resource.ref for resource in strategy.resources] == [
+        "lllm://acme/desk/channels/inbox",
+        "desk-probe",
+    ]
+    for name in ("probe", "own"):
+        assert client.get(f"/tactics/{name}/info").json()["package_ref"] is None
+        assert client.post(f"/tactics/{name}/run", json={"input": 1}).json()["output"] is None

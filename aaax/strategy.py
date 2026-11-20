@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from lllm.protocol import CallContext, Tactic, TacticInfo
+from lllm.protocol.refs import tactic_ref_value
 
 from .models import ResourceKind, StrategyInfo, StrategyResource, _segment
 
@@ -227,6 +228,7 @@ class Strategy:
                     handler,
                     name=resource.name,
                     description=resource.description or None,
+                    ref=resource.ref,
                 )
             self._tactics[resource.name] = handler
         elif isinstance(handler, Tactic):
@@ -246,10 +248,12 @@ class Strategy:
     ) -> "Strategy":
         """Mount an lllm tactic; it is served at ``/tactics/<name>/``.
 
-        A tactic mounted under another ``name``, or with another
-        ``description``, is served as a copy that has them, so replies and
-        errors name the route and ``/info`` gives the description;
-        ``tactic`` itself is left as it is.
+        A tactic mounted under another ``name``, or with another ``ref`` or
+        ``description``, is served as a copy that has them: replies and
+        errors name the route, ``/info`` gives the description and the ref
+        as ``package_ref``, and requests carry the ref as ``tactic_ref``.
+        ``tactic`` itself is left as it is. A ``ref`` that is not a tactic
+        ref (``lllm://org/package/tactics/name``) labels only the record.
         """
 
         info = tactic.info()
@@ -309,12 +313,13 @@ class Strategy:
     def tactics(self) -> dict[str, Tactic[Any, Any]]:
         """Tactic resources as lllm tactics, by local name.
 
-        Each is named after its resource, and described by the resource's
-        description when it has one. Tactic objects are returned as-is, or
-        as a copy when they were mounted under another name or description;
-        lazy package tactics are loaded, and plain handler functions are
-        wrapped with :func:`lllm.as_tactic`. A handler that takes no input is
-        called without it, as the strategy calls its other handlers.
+        Each is named after its resource, and carries the resource's
+        description and ref (when it is a tactic ref) if it has them. Tactic
+        objects are returned as-is, or as a copy when they were mounted
+        under another name, description, or ref; lazy package tactics are
+        loaded, and plain handler functions are wrapped with
+        :func:`lllm.as_tactic`. A handler that takes no input is called
+        without it, as the strategy calls its other handlers.
         """
 
         return {name: self._tactic(name) for name in self._tactics}
@@ -327,10 +332,12 @@ class Strategy:
             return value.load()
         from lllm.runtimes import as_tactic
 
+        resource = self._resources[name]
         return as_tactic(
             _tactic_callable(value),
             name=name,
-            description=self._resources[name].description or None,
+            description=resource.description or None,
+            package_ref=_tactic_ref(resource.ref),
         )
 
     def _lookup(self, name: str) -> StrategyResource:
@@ -472,35 +479,38 @@ def _mounted_tactic(
     *,
     name: str | None = None,
     description: str | None = None,
+    ref: str | None = None,
     examples: list[dict[str, Any]] | None = None,
 ) -> Tactic[Any, Any]:
     """``tactic`` as a strategy serves it, with its resource's identity.
 
-    ``name`` (the resource's local name), ``description``, and ``examples``
-    replace the tactic's own when given. LLLM's tactic service names the
-    tactic in every reply and error and describes it on ``/info``, so a
-    tactic whose identity differs is served as a shallow copy that has it,
-    as LLLM's native tactics copy themselves for each call. The tactic
+    ``name`` (the resource's local name), ``description``, ``ref`` (its
+    ``package_ref``), and ``examples`` replace the tactic's own when given.
+    LLLM's tactic service names the tactic in every reply and error,
+    describes it on ``/info``, and gives requests its ref as ``tactic_ref``,
+    so a tactic whose identity differs is served as a shallow copy that has
+    it, as LLLM's native tactics copy themselves for each call. The tactic
     passed in is left as it is, since other code may use it too. The copy's
     identity is set through the protocol's own constructor, which checks it;
-    a name LLLM rejects, such as one with ``;`` (a valid AAAX name), is not
-    used.
+    a name or ref LLLM rejects is not used: a name with ``;`` (a valid AAAX
+    name), or a ref that is not ``lllm://org/package/tactics/name``.
     """
 
     info = tactic.info()
     if name is None or _tactic_name(name) is None:
         name = tactic.tactic_name
     description = info.description if description is None else description
+    ref = _tactic_ref(ref) or tactic.package_ref
     examples = tactic.examples if examples is None else examples
-    own = (tactic.tactic_name, info.description, tactic.examples)
-    if (name, description, examples) == own:
+    own = (tactic.tactic_name, info.description, tactic.package_ref, tactic.examples)
+    if (name, description, ref, examples) == own:
         return tactic
     served = copy.copy(tactic)
     Tactic.__init__(
         served,
         name=name,
         description=description,
-        package_ref=tactic.package_ref,
+        package_ref=ref,
         service_ref=tactic.service_ref,
         examples=examples,
         metadata=tactic.metadata,
@@ -513,6 +523,17 @@ def _tactic_name(name: str) -> str | None:
 
     try:
         return TacticInfo(name=name).name
+    except ValueError:
+        return None
+
+
+def _tactic_ref(ref: str | None) -> str | None:
+    """``ref`` if it is a valid tactic ref, else None."""
+
+    if ref is None:
+        return None
+    try:
+        return tactic_ref_value(ref)
     except ValueError:
         return None
 

@@ -184,7 +184,7 @@ print(client.post("/resources/audit/invoke", json=body).json()["output"])
 | `trace_id`, `span_id`, `caller` | Tracing ids and who is calling |
 | `tags` | String labels, such as `{"env": "prod"}` |
 | `metadata` | Your own values: any JSON object |
-| `tactic_ref` | Defaults to the tactic's `package_ref`; a package tactic's is its manifest ref |
+| `tactic_ref` | Defaults to the tactic's `package_ref`: the ref it was mounted with, or a package tactic's manifest ref |
 | `package_ref`, `service_ref` | Refs the caller passes along |
 | `endpoint` | Set by the service: `run`, `stream`, or a custom endpoint's name |
 

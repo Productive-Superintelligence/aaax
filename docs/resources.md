@@ -116,9 +116,11 @@ The ref stays the same wherever the resource is mounted. A package gives
 each resource it declares `lllm://ORG/PACKAGE/SECTION/NAME`, and itself
 `lllm://ORG/PACKAGE` ([Refs](https://lllm.one/packages/#refs)); for your own
 resources you pass `ref=`, or `add_tactic` copies the tactic's
-`package_ref`. AAAX does not
-parse refs. It keeps them, so the table can say what each part is while the
-names say how to reach it here.
+`package_ref`. AAAX keeps refs as they are, so the table can say what each
+part is while the names say how to reach it here. A tactic resource also
+gives its ref to the tactic it serves, as `package_ref`, when the ref is a
+tactic ref, `lllm://ORG/PACKAGE/tactics/NAME`; a package tactic whose code
+sets a `package_ref` keeps that one.
 
 ## Handlers
 

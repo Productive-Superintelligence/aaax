@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from lllm.protocol.refs import tactic_ref_value
-
 from .models import StrategyResource
-from .strategy import Strategy, StrategyStore, _mounted_tactic
+from .strategy import Strategy, StrategyStore, _mounted_tactic, _tactic_ref
 
 
 def strategy_from_package(
@@ -354,14 +351,12 @@ class PackageTactic:
     def load(self) -> Any:
         if self._tactic is None:
             tactic = _load_tactic(self.entrypoint, base_dir=self.base_dir, name=self.name)
-            if self.ref is not None and tactic.package_ref is None:
-                tactic = copy.copy(tactic)
-                tactic.package_ref = self.ref
             info = tactic.info()
             self._tactic = _mounted_tactic(
                 tactic,
                 name=self.local_name,
                 description=None if info.description else (self.description or None),
+                ref=None if tactic.package_ref else self.ref,
                 examples=None if info.examples else (self.examples or None),
             )
         return self._tactic
@@ -383,15 +378,6 @@ def _load_tactic(entrypoint: str, *, base_dir: Path, name: str) -> Any:
         import_entrypoint(entrypoint, base_dir=base_dir, keep_loaded=True),
         name=name,
     )
-
-
-def _tactic_ref(ref: str | None) -> str | None:
-    if ref is None:
-        return None
-    try:
-        return tactic_ref_value(ref)
-    except ValueError:
-        return None
 
 
 def _check_names(strategy: Strategy, manifest: Any, prefix: str | None) -> None:

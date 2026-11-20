@@ -81,22 +81,21 @@ models mounts the same way ([Tactics](https://lllm.one/tactics/)).
 | `description` | The tactic's description, usually its docstring |
 | `metadata` | Yours, plus `runtime`: the tactic's runtime kind, such as `native` or `python` |
 
-`name` and `description` apply where the tactic is served too. A tactic
-mounted as `add_tactic(as_tactic(word_count), name="words")` is served at
-`/tactics/words/`, its responses and `/info` name it `words`, and a
-`description` you pass is the one its `/info` gives. The strategy serves a
-copy with that name and description, and the tactic you passed in keeps
-its own. `ref` changes the strategy's record, not the tactic. To give the
-tactic itself a ref, which its `/info` reports
-and its requests carry as `tactic_ref`, set it when you build the tactic,
-as in `Triage(package_ref="lllm://acme/desk/tactics/triage")`; `add_tactic`
-then copies it into the record.
+`name`, `ref`, and `description` apply where the tactic is served too. A
+tactic mounted as `add_tactic(as_tactic(word_count), name="words")` is
+served at `/tactics/words/`, and its responses and `/info` name it `words`.
+A `ref` you pass is the `package_ref` its `/info` reports and the
+`tactic_ref` its requests carry, and a `description` is the one its
+`/info` gives. The strategy serves a copy that has them, and the tactic you
+passed in keeps its own. A `ref` that is not a tactic ref,
+`lllm://ORG/PACKAGE/tactics/NAME`, labels only the record.
 
 `strategy.tactic(name, handler=fn)` mounts a plain function without
 wrapping it yourself. AAAX wraps it with `lllm.as_tactic` when the strategy
 is served or the tactic is used, so it is a full tactic too. Its record and
 its `/info` take the `description` you pass, or else the function's
-docstring, as `add_tactic(as_tactic(fn))` does.
+docstring, as `add_tactic(as_tactic(fn))` does, and its `ref` reaches the
+tactic as `add_tactic`'s does.
 
 `strategy.tactics()` returns every tactic resource that has a handler, as
 LLLM tactics, by local name: tactic objects as they are, package tactics
