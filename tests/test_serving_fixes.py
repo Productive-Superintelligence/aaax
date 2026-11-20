@@ -111,8 +111,12 @@ def test_a_tactic_named_with_braces_is_refused_when_the_app_is_built(name):
     strategy = Strategy("desk").tactic("{record}")
     strategy.add_tactic(Echo(), name=name)
 
-    with pytest.raises(ValueError, match=re.escape(f"Tactic {name!r} cannot be served")):
+    with pytest.raises(ValueError) as raised:
         create_strategy_app(strategy)
+    assert str(raised.value) == (
+        f"Tactic {name!r} cannot be served: '{{' and '}}' can mark parameters in "
+        "routes, so a served tactic's name cannot hold them; rename it."
+    )
     listed = TestClient(create_strategy_app(Strategy("desk").tactic("{record}")))
     assert [record["name"] for record in listed.get("/tactics").json()] == ["{record}"]
 

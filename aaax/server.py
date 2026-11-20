@@ -108,8 +108,8 @@ def create_strategy_app(
     strategy with an sssn store raises ``ImportError``. A store that is not an
     sssn store is not mounted, and needs no sssn.
 
-    A tactic named with ``{`` or ``}``, which mark parameters in routes,
-    cannot be served: building the app raises ``ValueError``.
+    A tactic named with ``{`` or ``}``, which can mark parameters in
+    routes, cannot be served: building the app raises ``ValueError``.
 
     The app refuses the cross-site requests a page on another site can make
     a visitor's browser send without asking first: a POST whose body is not
@@ -126,8 +126,8 @@ def create_strategy_app(
         # declares one can still be inspected.
         if "{" in name or "}" in name:
             raise ValueError(
-                f"Tactic {name!r} cannot be served: '{{' and '}}' mark parameters in "
-                f"routes, so /tactics/{name}/ would match other paths. Rename it."
+                f"Tactic {name!r} cannot be served: '{{' and '}}' can mark parameters "
+                "in routes, so a served tactic's name cannot hold them; rename it."
             )
     from . import __version__
 

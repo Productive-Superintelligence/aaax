@@ -206,7 +206,7 @@ dashes, and underscores are fine. Resource names become URL paths, such as
 are checked when you build the strategy, not when a request arrives. Leave
 `;`, `{`, and `}` out of tactic names too. LLLM's tactic names cannot hold
 `;`, so a tactic mounted under such a name answers under its own name, and
-`{` and `}` mark parameters in routes, so building the app refuses a
+`{` and `}` can mark parameters in routes, so building the app refuses a
 tactic whose name has one; `aaax inspect` still lists it.
 
 ```python title="names.py"
