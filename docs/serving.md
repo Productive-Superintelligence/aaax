@@ -216,9 +216,10 @@ and answer with a `StrategyRunResponse`:
 is empty for `/run`. A body is read as on the tactic routes: an object with
 `input` or `task`, and at most `context` besides, is an envelope, and any
 other body is the input itself, so `{"text": "Hi"}` runs with that object
-as the input, and an empty body with `None`; a body that is neither JSON
-nor UTF-8 text is a 400. `/resources/{name}/invoke` does what the resource
-calls for:
+as the input, and an empty body with `None`. A body that is not UTF-8 is
+the input as bytes when its content type is `application/octet-stream`,
+as on the tactic routes, and a 400 otherwise. `/resources/{name}/invoke`
+does what the resource calls for:
 
 | Resource | `/resources/{name}/invoke` |
 | --- | --- |
@@ -284,7 +285,7 @@ print(response.status_code, response.json())  # (1)!
 | 404 | The URL names no resource, or a `/channels/` route names one that is not a channel (`ResourceNotFoundError`) |
 | 404, 409, 400 | A channel store error, with SSSN's codes: not found, conflict, anything else |
 | Its own | An `HTTPException` from the runner or a handler |
-| 500 | Anything else the runner or a handler raises, an `OutputSchemaError` included |
+| 500 | Anything else the runner or a handler raises, an `OutputSchemaError` included, or a reply that cannot be encoded, such as bytes that are not UTF-8 |
 
 `OutputSchemaError` is the `SchemaError` that lllm-core 0.4.1 and later
 raise for a result that fails its output schema: the code's fault, not the

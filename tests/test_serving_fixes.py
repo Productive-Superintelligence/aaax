@@ -454,13 +454,71 @@ def test_a_body_that_is_neither_json_nor_utf8_text_is_a_400():
     strategy.service("svc", handler=lambda value: value)
     strategy.channel("feed", handler=lambda value=None: value)
     client = TestClient(create_strategy_app(strategy))
-    binary = {"content": b"\xff\xfe\x00", "headers": {"content-type": "application/octet-stream"}}
 
-    for route in ("/run", "/resources/svc/invoke", "/channels/feed/events"):
-        response = client.post(route, **binary)
-        assert response.status_code == 400, route
-        assert error_detail(response)["type"] == "SchemaError"
-        assert error_detail(response)["message"] == "The request body must be JSON or UTF-8 text."
+    for content_type in ("text/plain", "application/json", None):
+        headers = {} if content_type is None else {"content-type": content_type}
+        for route in ("/run", "/resources/svc/invoke", "/channels/feed/events"):
+            response = client.post(route, content=b"\xff\xfe\x00", headers=headers)
+            assert response.status_code == 400, (content_type, route)
+            assert error_detail(response)["type"] == "SchemaError"
+            message = "The request body must be JSON or UTF-8 text."
+            assert error_detail(response)["message"] == message
+
+
+OCTET_STREAM = {"content-type": "application/octet-stream"}
+
+
+def test_an_octet_stream_body_that_is_not_utf8_reaches_the_handler_as_bytes():
+    # As LLLM's tactic routes pass it to the tactic.
+    seen = []
+    strategy = Strategy("desk").add_tactic(Echo())
+    strategy.service("svc", handler=lambda value: seen.append(value) or len(value))
+    client = TestClient(create_strategy_app(strategy))
+
+    response = client.post("/resources/svc/invoke", content=b"\xff\xfe\x00", headers=OCTET_STREAM)
+
+    assert response.status_code == 200
+    assert response.json()["output"] == 3
+    assert seen == [b"\xff\xfe\x00"]
+
+
+def test_a_reply_that_cannot_be_encoded_is_a_500_envelope():
+    strategy = Strategy("desk")
+    strategy.runner(lambda value: value)  # echoes the bytes back
+    strategy.service("surrogate", handler=lambda value: "\ud800")
+    client = TestClient(create_strategy_app(strategy))
+
+    echoed = client.post("/run", content=b"\xff\xfe\x00", headers=OCTET_STREAM)
+    assert echoed.status_code == 500
+    assert error_detail(echoed)["type"] == "UnicodeDecodeError"
+    assert error_detail(echoed)["endpoint"] == "run"
+    surrogate = client.post("/resources/surrogate/invoke", json={"input": 1})
+    assert surrogate.status_code == 500
+    assert error_detail(surrogate)["type"] == "UnicodeEncodeError"
+    assert error_detail(surrogate)["metadata"] == {"resource": "surrogate"}
+
+
+def test_a_body_is_decoded_strictly_as_utf8_before_json_is_parsed():
+    # json.loads(bytes), which Starlette's request.json() uses, lets
+    # UTF-8-encoded surrogates through.
+    seen = []
+    strategy = Strategy("desk").add_tactic(Echo())
+    strategy.service("svc", handler=lambda value: seen.append(value) or "ok")
+    client = TestClient(create_strategy_app(strategy))
+    surrogate = b'{"input": "\xed\xa0\x80"}'
+
+    as_json = client.post("/resources/svc/invoke", content=surrogate, headers={"content-type": "application/json"})
+    as_bytes = client.post("/resources/svc/invoke", content=surrogate, headers=OCTET_STREAM)
+
+    assert as_json.status_code == 400
+    assert error_detail(as_json)["type"] == "SchemaError"
+    assert as_bytes.status_code == 200
+    assert seen == [surrogate]
+    # A UTF-8 byte order mark before JSON is fine, as on the tactic routes.
+    bom = b'\xef\xbb\xbf{"input": 5}'
+    assert client.post("/tactics/echo/run", content=bom).json()["output"] == 5
+    assert client.post("/resources/svc/invoke", content=bom).status_code == 200
+    assert seen[-1] == 5
 
 
 def test_the_openapi_document_keeps_the_named_request_envelope():

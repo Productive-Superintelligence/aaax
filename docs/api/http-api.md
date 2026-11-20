@@ -33,8 +33,10 @@ whose keys are `input` or `task`, and optionally `context`, is the
 envelope: its `input` is the input, or its `task` when `input` is missing
 or `null`. Any other body, such as an object with other keys, a string, or
 a number, is the input itself; a body that is not JSON is its text, and an
-empty body is the input `null`. A body that is neither JSON nor UTF-8 text
-is a 400 `SchemaError`. `metadata` names the resource and the route
+empty body is the input `null`. The body is decoded strictly as UTF-8;
+one that is not UTF-8 is the input as bytes when its content type is
+`application/octet-stream`, as on LLLM's tactic routes, and a 400
+`SchemaError` otherwise. `metadata` names the resource and the route
 (`resource` or `channel`), and is empty for `/run`.
 
 The tactic services under `/tactics/{name}/` use LLLM's service envelopes:
@@ -96,7 +98,7 @@ The strategy's routes report errors in LLLM's services error envelope:
 | 403 | A cross-site request (by `Sec-Fetch-Site: cross-site` or `same-site`, or, without it, an `Origin` that is `null` or for another host and port) that is a POST whose body is not JSON, on any route, or a GET or HEAD to a tactic's custom endpoint under `/tactics/{name}/` (`CrossSiteRequestError`). `create_strategy_app(strategy, allow_cross_site_requests=True)` serves them. |
 | 404 | The resource named in the URL does not exist, or a `/channels/` route names a resource that is not a channel. |
 | Its own | An `HTTPException` from the runner or a handler keeps its status and plain `detail`; a channel store error keeps the store API's code (404 not found, 409 conflict, 400 otherwise). |
-| 500 | Anything else the runner or a handler raises, including an `OutputSchemaError`, which lllm-core 0.4.1 and later raise for a result that fails its output schema. |
+| 500 | Anything else the runner or a handler raises, including an `OutputSchemaError`, which lllm-core 0.4.1 and later raise for a result that fails its output schema; and a reply that cannot be encoded, such as bytes that are not UTF-8 or a string with a lone surrogate. |
 
 A body that does not validate is a 400 `SchemaError` with `endpoint` set to
 `null`. A tactic resource gets the status codes of `POST /tactics/{name}/run`

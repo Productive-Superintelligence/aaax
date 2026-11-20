@@ -26,6 +26,7 @@ POST whose body is not JSON with a 403.
 from __future__ import annotations
 
 import inspect
+import json
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -195,15 +196,14 @@ def create_strategy_app(
                 "kind": kind,
             }
         )
-        response = await _invoke(strategy, name, request, endpoint="channel")
-        return response.model_dump()
+        return await _invoke(strategy, name, request, endpoint="channel")
 
     @app.post(
         "/channels/{name}/events",
         response_model=StrategyRunResponse,
         openapi_extra=_ENVELOPE_BODY,
     )
-    async def append_channel_event(name: str, request: Request) -> StrategyRunResponse:
+    async def append_channel_event(name: str, request: Request) -> JSONResponse:
         envelope = await _run_request(request)
         if not isinstance(envelope.input, dict):
             # The input holds the event fields; anything else would be dropped.
@@ -216,7 +216,7 @@ def create_strategy_app(
         return await _invoke(strategy, name, envelope, endpoint="channel")
 
     @app.post("/run", response_model=StrategyRunResponse, openapi_extra=_ENVELOPE_BODY)
-    async def run(request: Request) -> StrategyRunResponse:
+    async def run(request: Request) -> JSONResponse:
         envelope = await _run_request(request)
         try:
             output = await strategy.arun(envelope.input, context=envelope.context)
@@ -224,17 +224,14 @@ def create_strategy_app(
             raise
         except Exception as exc:
             raise _http_error(exc, endpoint="run") from exc
-        return StrategyRunResponse(
-            output=jsonable_encoder(output),
-            strategy=strategy.name,
-        )
+        return _reply(strategy, output, endpoint="run")
 
     @app.post(
         "/resources/{name}/invoke",
         response_model=StrategyRunResponse,
         openapi_extra=_ENVELOPE_BODY,
     )
-    async def invoke_resource(name: str, request: Request) -> StrategyRunResponse:
+    async def invoke_resource(name: str, request: Request) -> JSONResponse:
         """Call a resource's handler.
 
         A tactic resource runs as ``POST /tactics/{name}/run`` runs it: the
@@ -419,20 +416,30 @@ async def _run_request(request: Request) -> StrategyRunRequest:
     ``context``, is an envelope: its ``input``, or its ``task`` when the
     input is missing or null, is the input. Any other body, an object with
     other keys included, is the input itself; a body that is not JSON is its
-    text, and an empty body is ``None``. A body that is neither JSON nor
-    UTF-8 text, and a malformed envelope, such as one whose ``context`` is
-    not an object, are a 400 ``SchemaError``.
+    text, and an empty body is ``None``. The body is decoded strictly as
+    UTF-8: one that is not UTF-8 is the input as bytes when its content type
+    is ``application/octet-stream``, as on LLLM's tactic routes, and a 400
+    ``SchemaError`` otherwise, as is a malformed envelope, such as one whose
+    ``context`` is not an object.
     """
 
+    raw = await request.body()
     try:
-        body = await request.json()
-    except Exception:  # not JSON, or empty
-        raw = await request.body()
-        try:
-            body = raw.decode("utf-8") if raw else None
-        except UnicodeDecodeError as exc:
+        # Strictly, unlike json.loads(bytes), which lets UTF-8-encoded
+        # surrogates through to fail when the reply is encoded.
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        media_type = request.headers.get("content-type", "").split(";", 1)[0]
+        if media_type.strip().lower() != "application/octet-stream":
             error = SchemaError("The request body must be JSON or UTF-8 text.")
             raise HTTPException(status_code=400, detail=_error_payload(error)) from exc
+        body: Any = raw  # bytes, as LLLM's tactic routes pass such a body
+    else:
+        try:
+            # A UTF-8 byte order mark is allowed before JSON, as json.loads allows it.
+            body = json.loads(text.removeprefix("\ufeff"))
+        except ValueError:
+            body = text or None  # not JSON: the text, or None for an empty body
     keys = set(body) if isinstance(body, dict) else set()
     if not (keys & {"input", "task"} and keys <= {"input", "task", "context"}):
         return StrategyRunRequest(input=body)
@@ -453,7 +460,7 @@ async def _invoke(
     request: StrategyRunRequest,
     *,
     endpoint: str,
-) -> StrategyRunResponse:
+) -> JSONResponse:
     try:
         resource = strategy._lookup(name)
     except ResourceNotFoundError as exc:
@@ -475,11 +482,33 @@ async def _invoke(
         if isinstance(exc, StarletteHTTPException) and not tactic:
             raise  # a tactic's is a 500, as on /tactics/{name}/run
         raise _http_error(exc, endpoint=endpoint, resource=name, tactic=tactic) from exc
-    return StrategyRunResponse(
-        output=jsonable_encoder(output),
-        strategy=strategy.name,
-        metadata={"resource": name, "endpoint": endpoint},
-    )
+    return _reply(strategy, output, endpoint=endpoint, resource=name)
+
+
+def _reply(
+    strategy: Strategy,
+    output: Any,
+    *,
+    endpoint: str,
+    resource: str | None = None,
+) -> JSONResponse:
+    """A route's ``StrategyRunResponse``, encoded here, not after the route returns.
+
+    So a reply that cannot be encoded, such as bytes that are not UTF-8 or
+    a string with a lone surrogate, is a 500 in the services error envelope
+    rather than a bare 500.
+    """
+
+    metadata = {} if resource is None else {"resource": resource, "endpoint": endpoint}
+    try:
+        reply = StrategyRunResponse(
+            output=jsonable_encoder(output),
+            strategy=strategy.name,
+            metadata=metadata,
+        )
+        return JSONResponse(reply.model_dump(mode="json"))
+    except Exception as exc:
+        raise _http_error(exc, endpoint=endpoint, resource=resource, status_code=500) from exc
 
 
 def _http_error(
