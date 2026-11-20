@@ -85,6 +85,18 @@ def test_a_tactic_keeps_its_name_when_lllm_cannot_carry_the_local_name():
     assert reply.json()["tactic"] == "echo"
 
 
+def test_a_function_mounted_under_a_name_lllm_cannot_hold_answers_under_its_own():
+    strategy = Strategy("names").tactic("a;b", handler=count_words)
+    client = TestClient(create_strategy_app(strategy))
+
+    reply = client.post("/tactics/a;b/run", json={"input": "one two"})
+    invoked = client.post("/resources/a;b/invoke", json={"input": "one two"})
+
+    assert reply.status_code == invoked.status_code == 200
+    assert (reply.json()["output"], reply.json()["tactic"]) == (2, "count_words")
+    assert invoked.json()["output"] == 2
+
+
 # Docs fix 2: a name under /tactics/ that no tactic is mounted under got
 # Starlette's plain {"detail": "Not Found"}.
 

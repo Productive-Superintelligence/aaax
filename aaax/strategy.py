@@ -334,7 +334,8 @@ class Strategy:
         resource = self._resources[name]
         return as_tactic(
             _tactic_callable(value),
-            name=name,
+            # A name LLLM cannot hold (one with ";") leaves the function's own.
+            name=_tactic_name(name),
             description=resource.description or None,
             package_ref=_tactic_ref(resource.ref),
         )
