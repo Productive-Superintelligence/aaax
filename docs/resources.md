@@ -209,8 +209,9 @@ its tactics. Use `custom` for anything else. A store-backed channel takes an
 | `POST /resources/{name}/invoke` | The resource's output, in the strategy's envelope |
 
 `GET /tactics` lists every tactic resource, while only those with a handler
-get `/tactics/{name}/` routes. An unknown name on the invoke route is a 404
-with a `ResourceNotFoundError` in LLLM's error envelope. On the command
+get `/tactics/{name}/` routes; any other name there is a 404 with a
+`TacticNotFound`. An unknown name on the invoke route is a 404 with a
+`ResourceNotFoundError`, both in LLLM's error envelope. On the command
 line, `aaax inspect` prints one line per resource, its kind, name, and ref
 (or its entrypoint, when it has no ref), and `--json` prints the whole
 `StrategyInfo`. [Serving](serving.md) has the envelopes and status codes.

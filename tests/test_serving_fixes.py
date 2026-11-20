@@ -396,7 +396,6 @@ def test_serving_a_strategy_file_checks_the_keys_of_its_packages(
         f"strategy.use_package({str(package)!r}, prefix='ref', bind=False)\n",
         encoding="utf-8",
     )
-
     (tmp_path / "reference.py").write_text(
         "from aaax import Strategy\n"
         "strategy = Strategy('ref')\n"
@@ -548,6 +547,7 @@ def build_strategy():
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
 
+    # Loading also runs the file's top level, which mounts the package too.
     for target in (project / "strategy.py", project, "../project/strategy.py"):
         strategy = load_strategy(target)
         assert {"a.echo", "b.echo"} <= {resource.name for resource in strategy.resources}
