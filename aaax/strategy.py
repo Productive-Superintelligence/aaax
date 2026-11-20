@@ -185,12 +185,18 @@ class Strategy:
         """Add a resource; ``handler`` makes it callable.
 
         A channel resource without a handler is backed by :attr:`store`, see
-        :meth:`attach_store`.
+        :meth:`attach_store`. A tactic resource without a description takes
+        the description of the tactic it serves: a tactic's own, or a
+        function's docstring.
         """
 
         channel = None
         if handler is None and resource.kind == "channel":
             channel = {"description": resource.description}
+        if resource.kind == "tactic" and not resource.description:
+            description = _handler_description(handler)
+            if description:
+                resource = resource.model_copy(update={"description": description})
         return self._add_resource(resource, handler=handler, channel=channel)
 
     def _add_resource(
@@ -214,7 +220,11 @@ class Strategy:
             return self
         if resource.kind == "tactic":
             if isinstance(handler, Tactic):
-                handler = _mounted_tactic(handler, name=resource.name)
+                handler = _mounted_tactic(
+                    handler,
+                    name=resource.name,
+                    description=resource.description or None,
+                )
             self._tactics[resource.name] = handler
         elif isinstance(handler, Tactic):
             self._handlers[resource.name] = _tactic_handler(handler)
@@ -233,13 +243,14 @@ class Strategy:
     ) -> "Strategy":
         """Mount an lllm tactic; it is served at ``/tactics/<name>/``.
 
-        A tactic mounted under another ``name`` is served as a copy that has
-        that name, so replies and errors name the route; ``tactic`` itself
-        is left as it is.
+        A tactic mounted under another ``name``, or with another
+        ``description``, is served as a copy that has them, so replies and
+        errors name the route and ``/info`` gives the description;
+        ``tactic`` itself is left as it is.
         """
 
         info = tactic.info()
-        return self.add_resource(
+        return self._add_resource(
             StrategyResource(
                 kind="tactic",
                 name=name or info.name,
@@ -295,11 +306,12 @@ class Strategy:
     def tactics(self) -> dict[str, Tactic[Any, Any]]:
         """Tactic resources as lllm tactics, by local name.
 
-        Each is named after its resource. Tactic objects are returned as-is,
-        or as a copy when they were mounted under another name; lazy package
-        tactics are loaded, and plain handler functions are wrapped with
-        :func:`lllm.as_tactic`. A handler that takes no input is called
-        without it, as the strategy calls its other handlers.
+        Each is named after its resource, and described by the resource's
+        description when it has one. Tactic objects are returned as-is, or
+        as a copy when they were mounted under another name or description;
+        lazy package tactics are loaded, and plain handler functions are
+        wrapped with :func:`lllm.as_tactic`. A handler that takes no input is
+        called without it, as the strategy calls its other handlers.
         """
 
         return {name: self._tactic(name) for name in self._tactics}
@@ -312,7 +324,11 @@ class Strategy:
             return value.load()
         from lllm.runtimes import as_tactic
 
-        return as_tactic(_tactic_callable(value), name=name)
+        return as_tactic(
+            _tactic_callable(value),
+            name=name,
+            description=self._resources[name].description or None,
+        )
 
     def _lookup(self, name: str) -> StrategyResource:
         resource = self._resources.get(name)
@@ -448,29 +464,42 @@ async def _call(
     return result
 
 
-def _mounted_tactic(tactic: Tactic[Any, Any], *, name: str | None = None) -> Tactic[Any, Any]:
-    """``tactic`` as a strategy serves it: under its resource's local ``name``.
+def _mounted_tactic(
+    tactic: Tactic[Any, Any],
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    examples: list[dict[str, Any]] | None = None,
+) -> Tactic[Any, Any]:
+    """``tactic`` as a strategy serves it, with its resource's identity.
 
-    LLLM's tactic service names the tactic in every reply and error, so a
-    tactic mounted under another name is served as a shallow copy that has
-    it, as LLLM's native tactics copy themselves for each call. The tactic
+    ``name`` (the resource's local name), ``description``, and ``examples``
+    replace the tactic's own when given. LLLM's tactic service names the
+    tactic in every reply and error and describes it on ``/info``, so a
+    tactic whose identity differs is served as a shallow copy that has it,
+    as LLLM's native tactics copy themselves for each call. The tactic
     passed in is left as it is, since other code may use it too. The copy's
     identity is set through the protocol's own constructor, which checks it;
     a name LLLM rejects, such as one with ``;`` (a valid AAAX name), is not
     used.
     """
 
-    if name is None or name == tactic.tactic_name or _tactic_name(name) is None:
-        return tactic
     info = tactic.info()
+    if name is None or _tactic_name(name) is None:
+        name = tactic.tactic_name
+    description = info.description if description is None else description
+    examples = tactic.examples if examples is None else examples
+    own = (tactic.tactic_name, info.description, tactic.examples)
+    if (name, description, examples) == own:
+        return tactic
     served = copy.copy(tactic)
     Tactic.__init__(
         served,
         name=name,
-        description=info.description,
+        description=description,
         package_ref=tactic.package_ref,
         service_ref=tactic.service_ref,
-        examples=tactic.examples,
+        examples=examples,
         metadata=tactic.metadata,
     )
     return served
@@ -483,6 +512,23 @@ def _tactic_name(name: str) -> str | None:
         return TacticInfo(name=name).name
     except ValueError:
         return None
+
+
+def _handler_description(handler: Handler | None) -> str:
+    """The description a tactic resource's ``handler`` is served with.
+
+    A tactic's own, or the docstring of a function that is wrapped with
+    :func:`lllm.as_tactic`. A package tactic, loaded on first use, is not
+    imported to tell.
+    """
+
+    if handler is None:
+        return ""
+    if isinstance(handler, Tactic):
+        return handler.info().description
+    if callable(getattr(handler, "load", None)):
+        return ""
+    return inspect.getdoc(_tactic_callable(handler)) or ""
 
 
 def _tactic_handler(tactic: Tactic[Any, Any]) -> Handler:

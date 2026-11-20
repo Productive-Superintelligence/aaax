@@ -81,10 +81,11 @@ models mounts the same way ([Tactics](https://lllm.one/tactics/)).
 | `description` | The tactic's description, usually its docstring |
 | `metadata` | Yours, plus `runtime`: the tactic's runtime kind, such as `native` or `python` |
 
-`name` names the tactic where it is served. A tactic mounted as
-`add_tactic(as_tactic(word_count), name="words")` is served at
-`/tactics/words/`, and its responses and `/info` name it `words`: the
-strategy serves a copy with that name, and the tactic you passed in keeps
+`name` and `description` apply where the tactic is served too. A tactic
+mounted as `add_tactic(as_tactic(word_count), name="words")` is served at
+`/tactics/words/`, its responses and `/info` name it `words`, and a
+`description` you pass is the one its `/info` gives. The strategy serves a
+copy with that name and description, and the tactic you passed in keeps
 its own. `ref` changes the strategy's record, not the tactic. To give the
 tactic itself a ref, which its `/info` reports
 and its requests carry as `tactic_ref`, set it when you build the tactic,
@@ -93,9 +94,9 @@ then copies it into the record.
 
 `strategy.tactic(name, handler=fn)` mounts a plain function without
 wrapping it yourself. AAAX wraps it with `lllm.as_tactic` when the strategy
-is served or the tactic is used, so it is a full tactic too, but the
-record's description is only what you pass; `add_tactic(as_tactic(fn))`
-fills it in from the docstring.
+is served or the tactic is used, so it is a full tactic too. Its record and
+its `/info` take the `description` you pass, or else the function's
+docstring, as `add_tactic(as_tactic(fn))` does.
 
 `strategy.tactics()` returns every tactic resource that has a handler, as
 LLLM tactics, by local name: tactic objects as they are, package tactics

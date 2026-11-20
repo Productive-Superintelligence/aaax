@@ -124,6 +124,8 @@ def add_package(
                 name=name,
                 ref=manifest.ref("tactic", name),
                 local_name=_local_name(package_prefix, name),
+                description=resource.description,
+                examples=list(resource.examples),
             )
             if bind
             else None
@@ -319,10 +321,12 @@ class PackageTactic:
     manifest, and ``local_name`` its resource name in the strategy, which
     the loaded tactic is served under. A loaded tactic without a
     ``package_ref`` gets ``ref``, the manifest ref
-    ``lllm://org/package/tactics/name``. Both are set on a copy: the imported
-    object may be shared with other packages or modules, and it is left as
-    it is. A ``ref`` that is not a valid tactic ref (the hub accepts tactic
-    names, like ``a#b``, that a ref cannot carry) is not used.
+    ``lllm://org/package/tactics/name``, and one without a description or
+    examples gets the manifest's ``description`` and ``examples``. All are
+    set on a copy: the imported object may be shared with other packages or
+    modules, and it is left as it is. A ``ref`` that is not a valid tactic
+    ref (the hub accepts tactic names, like ``a#b``, that a ref cannot
+    carry) is not used.
     """
 
     def __init__(
@@ -333,12 +337,16 @@ class PackageTactic:
         name: str,
         ref: str | None = None,
         local_name: str | None = None,
+        description: str = "",
+        examples: list[dict[str, Any]] | None = None,
     ) -> None:
         self.entrypoint = entrypoint
         self.base_dir = base_dir
         self.name = name
         self.ref = _tactic_ref(ref)
         self.local_name = local_name
+        self.description = description
+        self.examples = list(examples or ())
         self._tactic: Any = None
 
     def load(self) -> Any:
@@ -347,7 +355,13 @@ class PackageTactic:
             if self.ref is not None and tactic.package_ref is None:
                 tactic = copy.copy(tactic)
                 tactic.package_ref = self.ref
-            self._tactic = _mounted_tactic(tactic, name=self.local_name)
+            info = tactic.info()
+            self._tactic = _mounted_tactic(
+                tactic,
+                name=self.local_name,
+                description=None if info.description else (self.description or None),
+                examples=None if info.examples else (self.examples or None),
+            )
         return self._tactic
 
     async def __call__(

@@ -134,9 +134,9 @@ Every package resource also records `package`, `version`, and `resource`,
 its name in the manifest before any prefix; keys without a value are left
 out. A card holds `summary`, `tags`, `safety`, `latency`, and
 `suggested_commands`. `/tactics/{name}/info` describes the loaded tactic
-itself, so its description comes from the tactic's code (a function's
-docstring, for one), and the manifest's `description` and `examples` are
-on the record instead.
+itself: its description and examples come from the tactic's code (a
+function's docstring, for one), or from the manifest's `description` and
+`examples` when the code has none.
 
 ## Before anything runs
 

@@ -226,10 +226,11 @@ uses:
 has the fine print. The loaded tactic is served under its local name, such
 as `support.triage`, and one without a `package_ref` of its own gets the
 manifest's ref, so its `/info` and the `tactic_ref` of every request's
-`CallContext` name it by ref. Both are set on a copy, and the imported
-object is left as it is. The strategy's record takes its
-description from the manifest, while the tactic's `/info` takes it from the
-code, such as a docstring.
+`CallContext` name it by ref. The strategy's record takes its description
+from the manifest. The tactic's `/info` takes its description and examples
+from the code, such as a docstring, and from the manifest when the code has
+none. All of this is set on a copy, and the imported object is left as it
+is.
 
 Loaded code stays loaded, and the package folder stays on `sys.path`, so a
 package's code can import its own modules while it runs. Packages mounted

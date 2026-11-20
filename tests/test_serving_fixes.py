@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from lllm import Tactic
 from lllm.services import create_service_app
 
-from aaax import Strategy, create_strategy_app
+from aaax import Strategy, StrategyResource, create_strategy_app
 from helpers import error_detail, write_package
 
 
@@ -119,3 +119,116 @@ def test_a_not_found_name_lllm_errors_cannot_carry_still_gets_the_envelope():
     assert error_detail(response)["type"] == "TacticNotFound"
     assert error_detail(response)["message"] == "Tactic not found: a;b"
     assert error_detail(response)["tactic"] is None
+
+
+# Docs fix 3: a declared description did not reach /info, a handler's
+# docstring did not reach the record, and a package tactic's /info ignored
+# the manifest's description and examples.
+
+
+def count_words(text: str) -> int:
+    """Count the words in a ticket."""
+    return len(text.split())
+
+
+def test_a_declared_description_reaches_the_tactic_info():
+    echo = Echo()
+    strategy = Strategy("desk")
+    strategy.tactic("words", handler=count_words, description="Count words.")
+    strategy.add_tactic(echo, description="Repeat a ticket.")
+    strategy.tactic("again", handler=Echo(), description="Repeat it again.")
+    strategy.add_resource(
+        StrategyResource(kind="tactic", name="long", description="Words."),
+        handler=count_words,
+    )
+    client = TestClient(create_strategy_app(strategy))
+
+    for name, description in [
+        ("words", "Count words."),
+        ("echo", "Repeat a ticket."),
+        ("again", "Repeat it again."),
+        ("long", "Words."),
+    ]:
+        info = client.get(f"/tactics/{name}/info").json()
+        assert info["description"] == description
+        assert strategy.tactics()[name].info().description == description
+    assert echo.info().description == "Echo the input."
+
+
+def test_a_handler_docstring_fills_the_record_when_nothing_is_declared():
+    strategy = Strategy("desk").tactic("words", handler=count_words)
+    strategy.tactic("echo", handler=Echo())
+    strategy.tactic("bare", handler=lambda text: text)
+    strategy.add_resource(StrategyResource(kind="tactic", name="long"), handler=count_words)
+    strategy.add_tactic(Echo(), name="blank", description="")
+    client = TestClient(create_strategy_app(strategy))
+
+    records = {resource.name: resource.description for resource in strategy.resources}
+    assert records == {
+        "words": "Count the words in a ticket.",
+        "echo": "Echo the input.",
+        "bare": "",
+        "long": "Count the words in a ticket.",
+        "blank": "",  # add_tactic keeps a description given as ""
+    }
+    for name in ("words", "echo", "bare", "long"):
+        info = client.get(f"/tactics/{name}/info").json()
+        assert info["description"] == records[name]
+
+
+def _described_package(root: Path) -> Path:
+    root.mkdir(parents=True)
+    (root / "docs_fix_described.py").write_text(
+        """
+from lllm.protocol import Tactic
+
+
+def plain(input_value):
+    return input_value
+
+
+class Coded(Tactic):
+    \"\"\"Described in code.\"\"\"
+
+    def _run(self, input_value, *, context=None):
+        return input_value
+
+
+coded = Coded(name="coded", examples=[{"input": "from code"}])
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (root / "lllm.toml").write_text(
+        """
+[package]
+org = "demo"
+name = "described"
+
+[tactics.plain]
+entry = "docs_fix_described:plain"
+description = "Described in the manifest."
+examples = [{ input = "hello" }]
+
+[tactics.coded]
+entry = "docs_fix_described:coded"
+description = "Also described in the manifest."
+examples = [{ input = "from the manifest" }]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_a_package_tactic_info_uses_the_manifest_when_its_code_has_none(tmp_path: Path):
+    package = _described_package(tmp_path / "described")
+    strategy = Strategy("ops").use_package(package, prefix="d")
+    client = TestClient(create_strategy_app(strategy))
+
+    plain = client.get("/tactics/d.plain/info").json()
+    coded = client.get("/tactics/d.coded/info").json()
+
+    assert plain["description"] == "Described in the manifest."
+    assert plain["examples"] == [{"input": "hello"}]
+    # The code's own description and examples come first.
+    assert coded["description"] == "Described in code."
+    assert coded["examples"] == [{"input": "from code"}]
