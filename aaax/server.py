@@ -446,9 +446,10 @@ async def _run_request(request: Request) -> StrategyRunRequest:
     is ``application/octet-stream``, and a 400 ``SchemaError`` otherwise, as
     is a body nested more than 500 arrays and objects deep, and a malformed
     envelope, such as one whose ``context`` is not an object.
-    LLLM's tactic routes read bodies so from lllm-core 0.4.1; 0.4.0's take
-    any body that is not UTF-8 as bytes, and let UTF-8-encoded surrogates
-    through.
+    LLLM's tactic routes read bodies so from lllm-core 0.4.1. With 0.4.0,
+    they parse JSON in any UTF encoding (UTF-16 and UTF-32 included, and
+    UTF-8-encoded surrogates pass through) and take any other body that is
+    not UTF-8 as bytes.
     """
 
     raw = await request.body()

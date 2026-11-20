@@ -221,8 +221,10 @@ objects more than 500 levels deep is a 400, since code that walks it
 recursively can crash the server; with lllm-core 0.4.0, the routes under
 `/tactics/` lack this limit, and 0.4.1 adds it. A body that is not UTF-8 is
 the input as bytes when its content type is `application/octet-stream`,
-and a 400 otherwise, as on the tactic routes from lllm-core 0.4.1 (with
-0.4.0 they take any body that is not UTF-8 as bytes).
+and a 400 otherwise, as on the tactic routes from lllm-core 0.4.1. With
+0.4.0, those routes parse JSON in any UTF encoding (UTF-16 and UTF-32
+included, and UTF-8-encoded surrogates pass through) and take any other
+body that is not UTF-8 as bytes.
 `/resources/{name}/invoke` does what the resource calls for:
 
 | Resource | `/resources/{name}/invoke` |

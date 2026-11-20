@@ -42,9 +42,10 @@ and a deep enough body can still crash it there; 0.4.1 adds the limit.
 The body is decoded strictly as UTF-8;
 one that is not UTF-8 is the input as bytes when its content type is
 `application/octet-stream`, and a 400 `SchemaError` otherwise. LLLM's
-tactic routes read bodies so from lllm-core 0.4.1; with 0.4.0, the routes
-under `/tactics/` take any body that is not UTF-8 as bytes, and let
-UTF-8-encoded surrogates through. `metadata` names the resource and the
+tactic routes read bodies so from lllm-core 0.4.1. With 0.4.0, the routes
+under `/tactics/` parse JSON in any UTF encoding (UTF-16 and UTF-32
+included, and UTF-8-encoded surrogates pass through) and take any other
+body that is not UTF-8 as bytes. `metadata` names the resource and the
 route (`resource` or `channel`), and is empty for `/run`.
 
 The tactic services under `/tactics/{name}/` use LLLM's service envelopes:
