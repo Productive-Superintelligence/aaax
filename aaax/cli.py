@@ -156,7 +156,11 @@ def _ensure_api_keys(parser: argparse.ArgumentParser, strategy: Any, args: Any) 
     # The path lllm opens, normalized once: ~ expanded (the shell leaves it
     # alone after "="), a trailing "/" or "/." dropped. It is checked, read,
     # and written as this same path.
-    env_file = Path(".env.local" if args.env_file is None else args.env_file).expanduser()
+    try:
+        env_file = Path(".env.local" if args.env_file is None else args.env_file).expanduser()
+    except RuntimeError as exc:  # ~name for no known user (./~name reads the same)
+        parser.error(f"cannot expand --env-file {args.env_file}: {exc}")
+        raise
     read_from: Path | None = env_file
     unread = ""  # why the default env file was not read, if it was not
     try:

@@ -1067,6 +1067,20 @@ def test_an_env_file_named_on_the_command_line_that_is_a_symlink_stops_serve(
     assert serve_here == []
 
 
+@pytest.mark.parametrize("env_file", ["~docsfixnosuchuser/keys.env", "./~keys.env"])
+def test_an_env_file_whose_tilde_cannot_be_expanded_is_a_usage_error(
+    tmp_path: Path, serve_here, capsys, env_file
+):
+    # ~ followed by a name is that user's home, as lllm expands it; pathlib
+    # also reads ./~keys.env as ~keys.env.
+    _keyed_package(tmp_path / "keyed")
+
+    err = _serve_error(capsys, ["serve", "keyed", "--env-file", env_file])
+
+    assert f"error: cannot expand --env-file {env_file}: " in err
+    assert serve_here == []
+
+
 def test_a_named_env_file_that_does_not_exist_yet_is_created_with_the_keys(
     tmp_path: Path, serve_here, monkeypatch
 ):
