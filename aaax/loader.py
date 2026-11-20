@@ -18,8 +18,10 @@ from .strategy import Strategy
 def load_strategy(target: str | Path) -> Strategy:
     """Load a Strategy from `module:attr`, a `.py` file, or a directory.
 
-    While a strategy file runs, its ``build_strategy()`` included, relative
-    package paths it mounts are resolved against the file's folder.
+    While a strategy file runs, its ``build_strategy()`` included, every
+    relative package path given to ``use_package``, ``add_package``, or
+    ``strategy_from_package``, by the file or by helper code it calls, is
+    resolved against the file's folder; see :func:`aaax.add_package`.
     """
 
     text = _target_text(target)
@@ -32,11 +34,12 @@ def load_strategy(target: str | Path) -> Strategy:
             if candidate.is_file():
                 return _load_file(candidate)
         if (path / "lllm.toml").is_file():
-            return strategy_from_package(path)
+            # The folder checked here, even while a strategy file is loading.
+            return strategy_from_package(path.absolute())
         raise ValueError("strategy directory must contain strategy.py, shell.py, or lllm.toml")
     if path.is_file():
         if path.name == "lllm.toml":
-            return strategy_from_package(path)
+            return strategy_from_package(path.absolute())
         return _load_file(path)
     if ":" in text:
         module_name, _, attr = text.partition(":")

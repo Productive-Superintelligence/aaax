@@ -10,6 +10,7 @@ import asyncio
 import os
 import re
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -559,6 +560,87 @@ def build_strategy():
     # directory.
     with pytest.raises(OSError):
         Strategy("loose").use_package("packages/desk")
+
+
+def test_a_0_3_strategy_file_with_working_directory_paths_still_loads(
+    tmp_path: Path, monkeypatch
+):
+    # AAAX 0.3 resolved package paths in a strategy file against the working
+    # directory, so files run from another folder named them from there.
+    project = tmp_path / "project"
+    write_package(project / "packages" / "desk", "desk", channels=())
+    strategy_file = project / "strategy.py"
+    strategy_file.write_text(
+        "from aaax import Strategy\n"
+        "strategy = Strategy('ops')\n"
+        "strategy.use_package('project/packages/desk', prefix='old')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.warns(FutureWarning) as caught:
+        strategy = load_strategy("project/strategy.py")
+
+    assert "old.echo" in {resource.name for resource in strategy.resources}
+    assert len(caught) == 1
+    message = str(caught[0].message)
+    assert "'project/packages/desk' was found in the working directory" in message
+    assert "a future minor release" in message
+    # The warning points at the line in the strategy file that mounts it.
+    assert Path(caught[0].filename) == strategy_file.absolute()
+    assert caught[0].lineno == 3
+    # A path found in the file's folder is used without a warning.
+    monkeypatch.chdir(project)
+    strategy_file.write_text(
+        strategy_file.read_text().replace("project/packages", "packages"),
+        encoding="utf-8",
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert "old.echo" in {resource.name for resource in load_strategy("strategy.py").resources}
+
+
+def test_package_paths_from_helpers_a_strategy_file_calls_use_its_folder(
+    tmp_path: Path, monkeypatch
+):
+    project = tmp_path / "project"
+    write_package(project / "packages" / "desk", "desk", channels=())
+    (project / "docs_fix_mounts.py").write_text(
+        "def mount(strategy):\n"
+        "    return strategy.use_package('packages/desk', prefix='helper')\n",
+        encoding="utf-8",
+    )
+    (project / "strategy.py").write_text(
+        "from aaax import Strategy\n"
+        "from docs_fix_mounts import mount\n"
+        "def build_strategy():\n"
+        "    return mount(Strategy('ops'))\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delitem(sys.modules, "docs_fix_mounts", raising=False)
+
+    strategy = load_strategy(project)
+
+    assert "helper.echo" in {resource.name for resource in strategy.resources}
+
+
+def test_a_nested_load_strategy_loads_the_package_it_checked(tmp_path: Path, monkeypatch):
+    # The working directory and the strategy file's folder both hold an
+    # "other" package; load_strategy checks the target relative to the
+    # working directory, so that is the one it must load.
+    write_package(tmp_path / "other", "here", channels=())
+    project = tmp_path / "project"
+    write_package(project / "other", "there", channels=())
+    (project / "strategy.py").write_text(
+        "from aaax import load_strategy\n"
+        "def build_strategy():\n"
+        "    return load_strategy('other')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert load_strategy(project / "strategy.py").name == "here"
 
 
 # Docs fix 8: ResourceNotFoundError was importable only from aaax.strategy.

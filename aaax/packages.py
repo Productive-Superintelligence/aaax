@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import os
+import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -13,8 +15,9 @@ from .models import StrategyResource
 from .strategy import Strategy, StrategyStore, _mounted_tactic, _tactic_ref
 
 # The folder of the strategy file that load_strategy is running, if any:
-# relative package paths in the file are resolved against it.
+# relative package paths given while it runs are resolved against it.
 _strategy_folder: ContextVar[Path | None] = ContextVar("aaax_strategy_folder", default=None)
+_AAAX_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def strategy_from_package(
@@ -27,8 +30,9 @@ def strategy_from_package(
 ) -> Strategy:
     """Create a strategy from one LLLM hub package folder.
 
-    In a strategy file that :func:`aaax.load_strategy` loads, a relative
-    ``path`` is relative to the file's folder.
+    A relative ``path`` is relative to the working directory, or to a
+    strategy file's folder while :func:`aaax.load_strategy` loads the file,
+    as :func:`add_package` explains.
     """
 
     path = _package_path(path)
@@ -69,10 +73,14 @@ def add_package(
     opened, and the channels created, on first use, never while building or
     inspecting. ``bind=False`` adds metadata only.
 
-    In a strategy file that :func:`aaax.load_strategy` loads, a relative
-    ``path`` is relative to the file's folder, as if it were built from
-    ``Path(__file__).parent``; elsewhere it is relative to the working
-    directory.
+    A relative ``path`` is relative to the working directory, except while
+    :func:`aaax.load_strategy` loads a strategy file (its top level and its
+    ``build_strategy()``): then every relative package path, given by the
+    file or by helper code it calls, is relative to the file's folder, as if
+    built from ``Path(__file__).parent``. A path that is not in the file's
+    folder but is in the working directory, where AAAX 0.3 looked, is still
+    used, with a ``FutureWarning``: a future minor release looks in the
+    file's folder only.
     """
 
     path = _package_path(path)
@@ -434,7 +442,14 @@ def _packages_relative_to(folder: Path) -> Iterator[None]:
 
 
 def _package_path(path: str | Path) -> str | Path:
-    """``path`` against the folder of the strategy file being loaded, if relative."""
+    """``path`` as the strategy file being loaded means it.
+
+    Outside a strategy file, ``path`` is returned as it is. In one, a
+    relative ``path`` is resolved against the file's folder; one that exists
+    only relative to the working directory, as AAAX 0.3 resolved it, is
+    resolved there, with a ``FutureWarning``. The result is absolute, so the
+    package that was found is the one that loads.
+    """
 
     folder = _strategy_folder.get()
     if folder is None or not isinstance(path, (str, os.PathLike)):
@@ -442,7 +457,33 @@ def _package_path(path: str | Path) -> str | Path:
     text = os.fspath(path)
     if not isinstance(text, str) or not text or Path(text).expanduser().is_absolute():
         return path
-    return folder / text
+    in_folder = folder / text
+    in_working_directory = Path(text).absolute()
+    if in_folder.exists() or not in_working_directory.exists():
+        return in_folder
+    warnings.warn(
+        f"package path {text!r} was found in the working directory "
+        f"({in_working_directory}), not in the strategy file's folder ({folder}); "
+        "a future minor release of AAAX looks in the file's folder only. Make the "
+        "path relative to the file's folder, or absolute.",
+        FutureWarning,
+        stacklevel=_stacklevel_outside_aaax(),
+    )
+    return in_working_directory
+
+
+def _stacklevel_outside_aaax() -> int:
+    """The ``stacklevel`` of the first caller outside AAAX, for its caller's warning."""
+
+    frame = inspect.currentframe()
+    frame = frame.f_back if frame is not None else None  # the function that warns
+    level = 1
+    while frame is not None and os.path.dirname(
+        os.path.abspath(frame.f_code.co_filename)
+    ) == _AAAX_DIR:
+        frame = frame.f_back
+        level += 1
+    return level
 
 
 def _load_manifest(path: str | Path) -> Any:
