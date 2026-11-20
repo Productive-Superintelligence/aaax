@@ -638,18 +638,41 @@ def test_a_body_nested_more_than_500_levels_deep_is_a_400():
 def test_the_depth_scan_stops_where_json_stops_reading():
     # json.loads recurses only into a first value that is an array or an
     # object, and refuses anything after that value.
+    import json as json_module
+
     seen: list[Any] = []
     strategy = Strategy("desk")
     strategy.runner(lambda value: seen.append(value) or "ran")
     client = TestClient(create_strategy_app(strategy))
     deep = "[" * 20000
 
-    for body in ('1 ' + deep, '"x" ' + deep, "[1] " + deep, "{} " + deep):
+    as_text = [
+        "1 " + deep,
+        '"x" ' + deep,
+        "[1] " + deep,
+        "{} " + deep,
+        # A first value that never closes and never passes 500 levels.
+        json_module.dumps({"items": [{"id": i} for i in range(600)]})[:-1],
+        '{"note": "' + "[" * 600,
+        # A form feed is not JSON whitespace: json.loads stops at it.
+        "\x0c" + "[" * 501 + "]" * 501,
+    ]
+    for body in as_text:
         response = client.post("/run", content=body)
-        assert response.status_code == 200, body[:5]
+        assert response.status_code == 200, body[:12]
         assert seen[-1] == body  # not JSON: the text
-    for body in ("\ufeff \n\t" + deep, " \r\n{\"a\": " + deep):
-        assert client.post("/run", content=body).json()["detail"]["error"]["message"] == DEEP
+    # Bodies json.loads could parse, so only the scan refuses them: after a
+    # byte order mark and JSON whitespace, and past a bracket that closed.
+    refused = [
+        "\ufeff \n\t" + "[" * 501 + "]" * 501,
+        " \r\n" + _nested(501),
+        '{"b": [1], "a": ' + "[" * 600 + "]" * 600 + "}",
+    ]
+    for body in refused:
+        json_module.loads(body.removeprefix("\ufeff"))
+        response = client.post("/run", content=body)
+        assert response.status_code == 400, body[:12]
+        assert error_detail(response)["message"] == DEEP
 
 
 def test_a_big_body_is_read_off_the_event_loop():
