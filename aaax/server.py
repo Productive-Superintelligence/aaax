@@ -444,7 +444,8 @@ async def _run_request(request: Request) -> StrategyRunRequest:
     text, and an empty body is ``None``. The body is decoded strictly as
     UTF-8: one that is not UTF-8 is the input as bytes when its content type
     is ``application/octet-stream``, and a 400 ``SchemaError`` otherwise, as
-    is a malformed envelope, such as one whose ``context`` is not an object.
+    is a body nested more than 500 arrays and objects deep, and a malformed
+    envelope, such as one whose ``context`` is not an object.
     LLLM's tactic routes read bodies so from lllm-core 0.4.1; 0.4.0's take
     any body that is not UTF-8 as bytes, and let UTF-8-encoded surrogates
     through.
@@ -462,10 +463,14 @@ async def _run_request(request: Request) -> StrategyRunRequest:
             raise HTTPException(status_code=400, detail=_error_payload(error)) from exc
         body: Any = raw  # bytes, as LLLM's tactic routes pass such a body
     else:
+        if _nested_too_deep(text):
+            raise HTTPException(status_code=400, detail=_error_payload(_too_deep_error()))
         try:
             # A UTF-8 byte order mark is allowed before JSON, as json.loads allows it.
             body = json.loads(text.removeprefix("\ufeff"))
-        except (ValueError, RecursionError):  # nested too deep, too
+        except RecursionError as exc:
+            raise HTTPException(status_code=400, detail=_error_payload(_too_deep_error())) from exc
+        except ValueError:
             body = text or None  # not JSON: the text, or None for an empty body
     keys = set(body) if isinstance(body, dict) else set()
     if not (keys & {"input", "task"} and keys <= {"input", "task", "context"}):
@@ -479,6 +484,50 @@ async def _run_request(request: Request) -> StrategyRunRequest:
     except ValidationError as exc:
         error = SchemaError(_validation_message(exc.errors()))
         raise HTTPException(status_code=400, detail=_error_payload(error)) from exc
+
+
+# How deep a body may nest arrays and objects. Deeper ones are refused
+# before they are parsed: code that walks such a value recursively, as a
+# native tactic's repr() of its task does in a worker thread, can overflow
+# a small thread stack and crash the process.
+_MAX_JSON_DEPTH = 500
+_JSON_STRUCTURE = re.compile(r'[\[\]{}"\\]')
+
+
+def _nested_too_deep(text: str) -> bool:
+    """Whether ``text`` nests arrays and objects more than ``_MAX_JSON_DEPTH`` deep.
+
+    The brackets outside strings are counted, one at a time, so a body that
+    is not JSON counts too, and the check itself never recurses.
+    """
+
+    if text.count("[") + text.count("{") <= _MAX_JSON_DEPTH:
+        return False
+    depth = 0
+    in_string = False
+    escaped_at = -1  # the position of a character a backslash escapes
+    for match in _JSON_STRUCTURE.finditer(text):
+        position, char = match.start(), match.group()
+        if position == escaped_at:
+            continue
+        if in_string:
+            if char == "\\":
+                escaped_at = position + 1
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "[{":
+            depth += 1
+            if depth > _MAX_JSON_DEPTH:
+                return True
+        elif char in "]}":
+            depth -= 1
+    return False
+
+
+def _too_deep_error() -> SchemaError:
+    return SchemaError(f"Request body is nested more than {_MAX_JSON_DEPTH} levels deep.")
 
 
 async def _invoke(

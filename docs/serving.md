@@ -216,7 +216,10 @@ and answer with a `StrategyRunResponse`:
 is empty for `/run`. A body is read as on the tactic routes: an object with
 `input` or `task`, and at most `context` besides, is an envelope, and any
 other body is the input itself, so `{"text": "Hi"}` runs with that object
-as the input, and an empty body with `None`. A body that is not UTF-8 is
+as the input, and an empty body with `None`. A body that nests arrays and
+objects more than 500 levels deep is a 400, since code that walks it
+recursively can crash the server; with lllm-core 0.4.0, the routes under
+`/tactics/` lack this limit, and 0.4.1 adds it. A body that is not UTF-8 is
 the input as bytes when its content type is `application/octet-stream`,
 and a 400 otherwise, as on the tactic routes from lllm-core 0.4.1 (with
 0.4.0 they take any body that is not UTF-8 as bytes).

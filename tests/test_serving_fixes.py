@@ -581,22 +581,68 @@ def test_a_body_is_decoded_strictly_as_utf8_before_json_is_parsed():
     assert seen[-1] == 5
 
 
-def test_a_body_nested_too_deep_for_json_is_the_text_input():
-    strategy = Strategy("desk").add_tactic(Echo())
-    strategy.runner(lambda value: value)
-    strategy.service("svc", handler=lambda value: value)
-    strategy.channel("feed", handler=lambda value=None: value)
-    client = TestClient(create_strategy_app(strategy))
-    deep = "[" * 20000  # json.loads raises RecursionError, not ValueError
+def _nested(depth: int, inner: str = "1") -> str:
+    """A JSON object nested ``depth`` objects deep."""
 
-    assert client.post("/tactics/echo/run", content=deep).json()["output"] == deep
-    for route in ("/run", "/resources/svc/invoke"):
-        response = client.post(route, content=deep)
-        assert response.status_code == 200, route
-        assert response.json()["output"] == deep
-    channel = client.post("/channels/feed/events", content=deep)
-    assert channel.status_code == 400
-    assert error_detail(channel)["message"] == "input must be an object with the event fields"
+    return '{"a": ' * depth + inner + "}" * depth
+
+
+DEEP = "Request body is nested more than 500 levels deep."
+
+
+def test_a_body_nested_more_than_500_levels_deep_is_a_400():
+    calls: list[Any] = []
+    strategy = Strategy("desk")
+    strategy.runner(lambda value: calls.append("run") or "ran")
+    strategy.service("svc", handler=lambda value: calls.append("svc") or "called")
+    strategy.channel("feed", handler=lambda value=None: calls.append("feed") or "fed")
+    client = TestClient(create_strategy_app(strategy))
+    routes = ("/run", "/resources/svc/invoke", "/channels/feed/events")
+
+    for body in (_nested(501), "[" * 501 + "]" * 501, "[" * 20000):
+        for route in routes:
+            response = client.post(route, content=body)
+            assert response.status_code == 400, (route, body[:20])
+            assert error_detail(response)["type"] == "SchemaError"
+            assert error_detail(response)["message"] == DEEP
+    assert calls == []
+    # 500 levels are fine, and so are brackets in strings.
+    for body in (_nested(500), '{"a": "' + "[" * 20000 + '"}'):
+        for route in routes:
+            assert client.post(route, content=body).status_code == 200, route
+    assert calls == ["run", "svc", "feed"] * 2
+
+
+def test_a_deep_body_never_reaches_a_native_tactic_on_a_small_thread_stack():
+    # A native tactic repr()s its task in a worker thread; a body thousands
+    # of levels deep crashed the process there (SIGSEGV) on small stacks.
+    script = """
+import threading
+threading.stack_size(1 << 20)
+from fastapi.testclient import TestClient
+from lllm import Tactic
+from aaax import Strategy, create_strategy_app
+
+
+class Deep(Tactic):
+    name = "deep"
+
+    def call(self, task: dict) -> str:
+        return "ran"
+
+
+client = TestClient(create_strategy_app(Strategy("desk").add_tactic(Deep())))
+body = '{"a": ' * 4500 + "1" + "}" * 4500
+print(client.post("/resources/deep/invoke", content=body).status_code)
+"""
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=300
+    )
+
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert result.stdout.strip() == "400"
 
 
 def test_the_openapi_document_keeps_the_named_request_envelope():
