@@ -542,6 +542,24 @@ def test_a_body_is_decoded_strictly_as_utf8_before_json_is_parsed():
     assert seen[-1] == 5
 
 
+def test_a_body_nested_too_deep_for_json_is_the_text_input():
+    strategy = Strategy("desk").add_tactic(Echo())
+    strategy.runner(lambda value: value)
+    strategy.service("svc", handler=lambda value: value)
+    strategy.channel("feed", handler=lambda value=None: value)
+    client = TestClient(create_strategy_app(strategy))
+    deep = "[" * 20000  # json.loads raises RecursionError, not ValueError
+
+    assert client.post("/tactics/echo/run", content=deep).json()["output"] == deep
+    for route in ("/run", "/resources/svc/invoke"):
+        response = client.post(route, content=deep)
+        assert response.status_code == 200, route
+        assert response.json()["output"] == deep
+    channel = client.post("/channels/feed/events", content=deep)
+    assert channel.status_code == 400
+    assert error_detail(channel)["message"] == "input must be an object with the event fields"
+
+
 def test_the_openapi_document_keeps_the_named_request_envelope():
     # As AAAX 0.3 documented these routes, so clients generated from the
     # document keep their types.

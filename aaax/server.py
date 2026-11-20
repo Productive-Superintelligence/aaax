@@ -441,7 +441,7 @@ async def _run_request(request: Request) -> StrategyRunRequest:
         try:
             # A UTF-8 byte order mark is allowed before JSON, as json.loads allows it.
             body = json.loads(text.removeprefix("\ufeff"))
-        except ValueError:
+        except (ValueError, RecursionError):  # nested too deep, too
             body = text or None  # not JSON: the text, or None for an empty body
     keys = set(body) if isinstance(body, dict) else set()
     if not (keys & {"input", "task"} and keys <= {"input", "task", "context"}):
