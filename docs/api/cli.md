@@ -73,9 +73,9 @@ it reads nothing else:
 
 | Option | Default | |
 | --- | --- | --- |
-| `--env-file` | `.env.local` | Env file to read keys from. An unreadable default (or a symlink) counts as absent. One you name that exists must be a regular file you can read, not a symlink (even a broken one), or the command stops before it asks for anything; one that does not exist yet is created when keys are stored in it. `~` and `~user` are expanded, also in `--env-file=~/...` and after a leading `./` (`./~name` is read as `~name`). One that cannot be expanded, such as `~` followed by an unknown user's name, is a usage error; name a file whose name begins with `~` by its absolute path. |
+| `--env-file` | `.env.local` | Env file to read keys from. An unreadable default (or a symlink) counts as absent. One you name that exists must be a regular file you can read, not a symlink (even a broken one), or the command stops before it asks for anything; one that does not exist yet is created when keys are stored in it. `~` and `~user` are expanded, also in `--env-file=~/...` and after a leading `./` (`./~name` is read as `~name`). One that cannot be expanded, such as `~` followed by a user name the system does not know (on Linux and macOS; on Windows, Python guesses `C:\Users\name` instead), is a usage error; name a file whose name begins with `~` by its absolute path. |
 | `--no-keyring` | off | Do not read keys from the OS keyring; not with `--credentials keyring` |
-| `--credentials` | `auto` | Where to store keys asked for in a terminal: `keyring`, `env`, or `auto`: the keyring if it is installed (LLLM's `secure` extra) and `--no-keyring` is off, else the env file |
+| `--credentials` | `auto` | Where to store keys asked for in a terminal: `keyring`, `env`, or `auto`: the OS keyring if LLLM can use one (from lllm-core 0.4.1, a working keyring backend; with 0.4.0, the `keyring` package from LLLM's `secure` extra) and `--no-keyring` is off, else the env file |
 | `--skip-key-check` | off | Start without checking keys |
 
 Without a terminal, missing keys are a usage error:

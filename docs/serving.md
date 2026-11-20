@@ -381,8 +381,10 @@ read, not a symlink (even a broken one), or the command stops before it
 asks for anything; one that does not exist yet is created when keys are
 stored in it. `~` and `~user` are expanded, also in `--env-file=~/...` and
 after a leading `./` (`./~name` is read as `~name`). One that cannot be
-expanded, such as `~` followed by an unknown user's name, is a usage
-error; name a file whose name begins with `~` by its absolute path.
+expanded, such as `~` followed by a user name the system does not know
+(on Linux and macOS; on Windows, Python guesses `C:\Users\name`
+instead), is a usage error; name a file whose name begins with `~` by
+its absolute path.
 
 Without a terminal, missing keys stop the command with a message that
 names them and says how to set them:
