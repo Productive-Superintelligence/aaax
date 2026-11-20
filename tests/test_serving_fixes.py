@@ -1454,6 +1454,13 @@ def test_allow_cross_site_requests_turns_the_guard_off(monkeypatch):
     assert client.get("/tactics/explainer/explain", headers=CROSS_SITE_FETCH).status_code == 200
 
 
+@pytest.mark.parametrize("value", ["false", 1, None])
+def test_allow_cross_site_requests_must_be_a_bool(value):
+    # A truthy string such as "false" turned the guard off.
+    with pytest.raises(TypeError, match="allow_cross_site_requests must be a boolean."):
+        create_strategy_app(Strategy("desk"), allow_cross_site_requests=value)
+
+
 def test_allow_cross_site_requests_reaches_an_lllm_that_takes_it(monkeypatch):
     # LLLM's own tactic services gain the same switch; pass it on when they do.
     import aaax.server

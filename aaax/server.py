@@ -108,6 +108,8 @@ def create_strategy_app(
     tactic services when they take it.
     """
 
+    if not isinstance(allow_cross_site_requests, bool):
+        raise TypeError("allow_cross_site_requests must be a boolean.")
     from . import __version__
 
     app = FastAPI(
