@@ -27,7 +27,13 @@ from lllm.services import create_service_app, endpoint
 
 import aaax
 import aaax.strategy
-from aaax import Strategy, StrategyResource, create_strategy_app, load_strategy
+from aaax import (
+    Strategy,
+    StrategyResource,
+    StrategyRunRequest,
+    create_strategy_app,
+    load_strategy,
+)
 from aaax.cli import main
 from helpers import error_detail, write_package
 
@@ -443,13 +449,39 @@ def test_the_openapi_document_keeps_the_named_request_envelope():
             },
         }, path
     schema = document["components"]["schemas"]["StrategyRunRequest"]
+    model = StrategyRunRequest.model_json_schema()
     assert schema["title"] == "StrategyRunRequest"
     assert list(schema["properties"]) == ["input", "task", "context"]
-    assert schema["properties"]["input"] == {"title": "Input"}
-    assert schema["properties"]["context"] == {
-        "anyOf": [{"additionalProperties": True, "type": "object"}, {"type": "null"}],
-        "title": "Context",
-    }
+    for name in ("input", "context"):  # as the installed pydantic writes them
+        own = {key: value for key, value in model["properties"][name].items() if value is not None}
+        assert schema["properties"][name] == own, name
+
+
+def _refs(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        found = [value["$ref"]] if isinstance(value.get("$ref"), str) else []
+        return found + [ref for item in value.values() for ref in _refs(item)]
+    if isinstance(value, list):
+        return [ref for item in value for ref in _refs(item)]
+    return []
+
+
+def test_a_document_built_from_the_apps_routes_is_self_contained():
+    # FastAPI's "Extending OpenAPI" recipe, and scripts that export the
+    # spec, call get_openapi with the app's routes.
+    from fastapi.openapi.utils import get_openapi
+
+    app = create_strategy_app(Strategy("desk").service("svc", handler=lambda value: value))
+    document = get_openapi(title="desk", version="1", routes=app.routes)
+
+    schemas = document.get("components", {}).get("schemas", {})
+    for ref in _refs(document):
+        assert ref.removeprefix("#/components/schemas/") in schemas, ref
+    for path in ("/run", "/resources/{name}/invoke", "/channels/{name}/events"):
+        body = document["paths"][path]["post"]["requestBody"]
+        assert body["required"] is True
+        schema = body["content"]["application/json"]["schema"]
+        assert list(schema["properties"]) == ["input", "task", "context"], path
 
 
 def test_a_channel_append_takes_the_event_fields_as_the_body_too():

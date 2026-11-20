@@ -58,18 +58,30 @@ from .strategy import (
     _require_sssn,
 )
 
+def _envelope_schema() -> dict[str, Any]:
+    """StrategyRunRequest's schema, encoded as FastAPI encodes the schemas it
+    generates, with ``task``, which the routes take in place of ``input``."""
+
+    schema = jsonable_encoder(StrategyRunRequest.model_json_schema(), exclude_none=True)
+    properties = schema["properties"]
+    schema["properties"] = {
+        "input": properties["input"],
+        "task": {"title": "Task", "description": "The input, when input is missing or null."},
+        "context": properties["context"],
+    }
+    return schema
+
+
 # The routes that take a body read it themselves, by LLLM's envelope rules
 # (see _run_request), so FastAPI cannot document it from a typed parameter.
-# Their operations point at the StrategyRunRequest schema, as in AAAX 0.3,
-# and _document_envelope adds that schema to the app's document.
+# Their operations carry the schema inline, so any document built from the
+# app's routes is complete; the app's own document names it
+# StrategyRunRequest, as AAAX 0.3 did (see _document_envelope).
+_ENVELOPE_PATHS = ("/run", "/resources/{name}/invoke", "/channels/{name}/events")
 _ENVELOPE_BODY = {
     "requestBody": {
         "required": True,
-        "content": {
-            "application/json": {
-                "schema": {"$ref": "#/components/schemas/StrategyRunRequest"}
-            }
-        },
+        "content": {"application/json": {"schema": _envelope_schema()}},
     },
 }
 
@@ -251,29 +263,26 @@ def create_strategy_app(
 
 
 def _document_envelope(app: FastAPI) -> None:
-    """Add the StrategyRunRequest schema the envelope routes point at to ``app``'s document.
+    """Name the envelope schema StrategyRunRequest in ``app``'s OpenAPI document.
 
-    It is the model's schema, encoded as FastAPI encodes the schemas it
-    generates, with ``task``, which the routes take in place of ``input``.
+    The envelope routes' operations carry the schema inline; the app's
+    document moves it into a ``StrategyRunRequest`` component and points
+    them at it, as LLLM's ``_document_tactic_schemas`` patches a tactic's.
     """
 
     generate_openapi = app.openapi
+    ref = {"$ref": "#/components/schemas/StrategyRunRequest"}
 
     def openapi() -> dict[str, Any]:
         document = generate_openapi()
         schemas = document.setdefault("components", {}).setdefault("schemas", {})
         if "StrategyRunRequest" not in schemas:
-            schema = jsonable_encoder(StrategyRunRequest.model_json_schema(), exclude_none=True)
-            properties = schema["properties"]
-            schema["properties"] = {
-                "input": properties["input"],
-                "task": {
-                    "title": "Task",
-                    "description": "The input, when input is missing or null.",
-                },
-                "context": properties["context"],
-            }
-            schemas["StrategyRunRequest"] = schema
+            schemas["StrategyRunRequest"] = _envelope_schema()
+            for path in _ENVELOPE_PATHS:
+                operation = document.get("paths", {}).get(path, {}).get("post", {})
+                content = operation.get("requestBody", {}).get("content", {})
+                if "application/json" in content:
+                    content["application/json"]["schema"] = dict(ref)
         return document
 
     app.openapi = openapi  # type: ignore[method-assign]
