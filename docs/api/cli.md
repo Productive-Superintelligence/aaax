@@ -73,7 +73,7 @@ it reads nothing else:
 
 | Option | Default | |
 | --- | --- | --- |
-| `--env-file` | `.env.local` | Env file to read keys from; an unreadable default (or a symlink) counts as absent, and a file you name must be readable and not a symlink |
+| `--env-file` | `.env.local` | Env file to read keys from. An unreadable default (or a symlink) counts as absent. One you name that exists must be a regular file you can read, not a symlink (even a broken one), or the command stops before it asks for anything; one that does not exist yet is created when keys are stored in it. |
 | `--no-keyring` | off | Do not read keys from the OS keyring; not with `--credentials keyring` |
 | `--credentials` | `auto` | Where to store keys asked for in a terminal: `keyring`, `env`, or `auto`: the keyring if it is installed (LLLM's `secure` extra) and `--no-keyring` is off, else the env file |
 | `--skip-key-check` | off | Start without checking keys |

@@ -1003,6 +1003,27 @@ def test_an_env_file_named_on_the_command_line_that_is_a_symlink_stops_serve(
     assert serve_here == []
 
 
+def test_a_named_env_file_that_does_not_exist_yet_is_created_with_the_keys(
+    tmp_path: Path, serve_here, monkeypatch
+):
+    _keyed_package(tmp_path / "keyed")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    configure = lllm.credentials.configure_missing_api_keys
+    monkeypatch.setattr(
+        lllm.credentials,
+        "configure_missing_api_keys",
+        lambda missing, **kwargs: configure(
+            missing, secret_func=lambda prompt: "typed-in", **kwargs
+        ),
+    )
+
+    argv = ["serve", "keyed", "--env-file", "new/keys.env", "--credentials", "env"]
+    assert main(argv) == 0
+
+    assert f'{KEY}="typed-in"' in Path("new/keys.env").read_text()
+    assert os.environ[KEY] == "typed-in"
+
+
 def test_keys_asked_for_go_to_the_keyring_when_the_default_env_file_is_unreadable(
     tmp_path: Path, serve_here, monkeypatch
 ):
