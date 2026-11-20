@@ -292,8 +292,9 @@ async def _run_request(request: Request) -> StrategyRunRequest:
     ``context``, is an envelope: its ``input``, or its ``task`` when the
     input is missing or null, is the input. Any other body, an object with
     other keys included, is the input itself; a body that is not JSON is its
-    text, and an empty body is ``None``. A malformed envelope, such as one
-    whose ``context`` is not an object, is a 400 ``SchemaError``.
+    text, and an empty body is ``None``. A body that is neither JSON nor
+    UTF-8 text, and a malformed envelope, such as one whose ``context`` is
+    not an object, are a 400 ``SchemaError``.
     """
 
     try:
@@ -302,8 +303,9 @@ async def _run_request(request: Request) -> StrategyRunRequest:
         raw = await request.body()
         try:
             body = raw.decode("utf-8") if raw else None
-        except UnicodeDecodeError:
-            body = raw
+        except UnicodeDecodeError as exc:
+            error = SchemaError("The request body must be JSON or UTF-8 text.")
+            raise HTTPException(status_code=400, detail=_error_payload(error)) from exc
     keys = set(body) if isinstance(body, dict) else set()
     if not (keys & {"input", "task"} and keys <= {"input", "task", "context"}):
         return StrategyRunRequest(input=body)

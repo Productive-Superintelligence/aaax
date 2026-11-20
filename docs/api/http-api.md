@@ -33,7 +33,8 @@ whose keys are `input` or `task`, and optionally `context`, is the
 envelope: its `input` is the input, or its `task` when `input` is missing
 or `null`. Any other body, such as an object with other keys, a string, or
 a number, is the input itself; a body that is not JSON is its text, and an
-empty body is the input `null`. `metadata` names the resource and the route
+empty body is the input `null`. A body that is neither JSON nor UTF-8 text
+is a 400 `SchemaError`. `metadata` names the resource and the route
 (`resource` or `channel`), and is empty for `/run`.
 
 The tactic services under `/tactics/{name}/` use LLLM's service envelopes:

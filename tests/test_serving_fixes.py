@@ -353,6 +353,21 @@ def test_an_envelope_passes_its_context_and_a_bad_context_is_a_400():
     assert error_detail(bad)["endpoint"] is None
 
 
+def test_a_body_that_is_neither_json_nor_utf8_text_is_a_400():
+    strategy = Strategy("desk")
+    strategy.runner(lambda value: value)
+    strategy.service("svc", handler=lambda value: value)
+    strategy.channel("feed", handler=lambda value=None: value)
+    client = TestClient(create_strategy_app(strategy))
+    binary = {"content": b"\xff\xfe\x00", "headers": {"content-type": "application/octet-stream"}}
+
+    for route in ("/run", "/resources/svc/invoke", "/channels/feed/events"):
+        response = client.post(route, **binary)
+        assert response.status_code == 400, route
+        assert error_detail(response)["type"] == "SchemaError"
+        assert error_detail(response)["message"] == "The request body must be JSON or UTF-8 text."
+
+
 def test_a_channel_append_takes_the_event_fields_as_the_body_too():
     seen = []
 

@@ -212,8 +212,9 @@ and answer with a `StrategyRunResponse`:
 is empty for `/run`. A body is read as on the tactic routes: an object with
 `input` or `task`, and at most `context` besides, is an envelope, and any
 other body is the input itself, so `{"text": "Hi"}` runs with that object
-as the input, and an empty body with `None`. `/resources/{name}/invoke`
-does what the resource calls for:
+as the input, and an empty body with `None`; a body that is neither JSON
+nor UTF-8 text is a 400. `/resources/{name}/invoke` does what the resource
+calls for:
 
 | Resource | `/resources/{name}/invoke` |
 | --- | --- |
